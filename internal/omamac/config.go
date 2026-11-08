@@ -50,7 +50,6 @@ type Config struct {
 
 	// Wal-Panel & Omarchy Desktop Settings
 	LauncherShortcut    string `json:"launcher_shortcut"`
-	ThemeName           string `json:"theme_name"`
 	PanelsDir           string `json:"panels_dir"`
 	DefaultPanelType    string `json:"default_panel_type"` // "native", "html", or "both"
 	OnboardingDismissed bool   `json:"onboarding_dismissed"`
@@ -110,7 +109,6 @@ func DefaultConfig() *Config {
 		ClaudeAPIKey:         os.Getenv("ANTHROPIC_API_KEY"),
 		ClaudeCLIPath:        claudeBin,
 		LauncherShortcut:     "Alt+Space",
-		ThemeName:            "TokyoNight",
 		PanelsDir:            filepath.Join(DefaultConfigDir(), "panels"),
 		DefaultPanelType:     "native",
 	}
@@ -166,9 +164,6 @@ func (c *Config) Normalize() {
 	}
 	if c.LauncherShortcut == "" {
 		c.LauncherShortcut = def.LauncherShortcut
-	}
-	if c.ThemeName == "" {
-		c.ThemeName = def.ThemeName
 	}
 	if c.PanelsDir == "" {
 		c.PanelsDir = def.PanelsDir

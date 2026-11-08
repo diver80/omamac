@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0
+
+**Aufgeräumte Oberfläche**
+
+- Panels-Übersicht: eine Zeile pro Panel mit Status und den Schaltern „Menüleiste“ und „Widget“. Vorschau, Intervall, Native/HTML und Löschen stehen rechts beim gewählten Panel; Löschen fragt nach.
+- Doppelte Hinweise entfernt (Banner, „Kurz erklärt“, Token-Hinweise in Kopf- und Statuszeile). Die Kurzanleitung erscheint einmal beim ersten Start und über „?“.
+- Unten erscheint nur noch eine Zeile, wenn etwas fehlgeschlagen ist; Erfolge melden kurze Hinweise.
+- Einstellungen in drei Bereichen (KI-Anbieter, Tresor, Allgemein). Es wird nur der gewählte KI-Anbieter gezeigt, Änderungen werden sofort gespeichert; das Schnellstart-Kürzel gilt nach Enter.
+- Farbschema- und Rastergrößen-Auswahl entfernt: Sie hatten keine Wirkung.
+- Vorlagen, Statusmeldungen und Antigravity-Status auf Deutsch.
+- Das Menüleisten-Popover zeigt nur noch das Panel (Anpassen per KI geschieht im Hauptfenster).
+
 ## 1.2.2
 
 - **KI-Fehler werden angezeigt:** Ist die KI nicht erreichbar (Kontingent aufgebraucht, Login, Timeout) oder antwortet sie nicht mit Panel-JSON, wird kein Platzhalter-Panel mehr erzeugt und kein Panel verändert. Stattdessen erscheint die Fehlermeldung.

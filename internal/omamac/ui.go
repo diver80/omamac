@@ -31,9 +31,8 @@ const (
 type panelRuntime struct {
 	spec       *PanelSpec
 	tray       *mygo.Tray
-	flyout     *mygo.Window
-	floating   *mygo.Window
-	quickRefIn string
+	flyout   *mygo.Window
+	floating *mygo.Window
 
 	lastRefresh time.Time
 	refreshing  bool
@@ -71,19 +70,16 @@ type App struct {
 	runtimes map[string]*panelRuntime
 	apps     []QuickCommand
 
-	// 2-Prompt Studio & OmaLauncher state
-	createKindIdx   int // 0 = [ widget ], 1 = [ app ], 2 = [ panel ]
-	gridSizeIdx     int // 0 = 3x3 (Half), 1 = 6x2 (Full)
-	showStoreView   bool
-	omniBarQuery    string
+	// AI create (prompt 1) & refine (prompt 2) state
+	createAsWidget  bool // new panels are pinned as desktop widget instead of shown in the menu bar only
 	prompt1Text     string
 	prompt1TypeIdx  int // 0 = Native (mygo/ui), 1 = HTML (WebView), 2 = Both (Native + HTML)
 	prompt1CountIdx int // 0 = 1 Panel, 1 = 2 Panels, 2 = 3 Panels, 3 = 4 Panels
 	selectedPanelID string
 	prompt2Text     string
-	editorCmdText   string
-	editorBadgeText string
-	editorHTMLText  string
+
+	confirmDeleteID string // panel whose deletion awaits confirmation
+	confirmDelete   bool
 
 	// Launcher state
 	launcherQuery string
@@ -97,15 +93,12 @@ type App struct {
 	claudeModel   string
 	claudeKey     string
 	shortcutText  string
-	themeSelect   string
 
 	vaultNewKey  string
 	vaultNewVal  string
 	vaultNewDesc string
 
-	showHelpModal     bool
-	dontShowHelpAgain bool
-	hideQuickGuide    bool
+	showHelpModal bool
 
 	quitting  bool // set when the app quits: windows closing then must not unpin widgets or hide
 	busy      bool
@@ -134,16 +127,6 @@ var (
 		"claude-opus-5-5-medium",
 		"claude-sonnet-4-20250514",
 		"claude-3-7-sonnet-latest",
-	}
-	omarchyThemes = []string{
-		"TokyoNight",
-		"Catppuccin Mocha",
-		"Vantablack",
-		"White",
-		"Gruvbox Dark",
-		"Everforest",
-		"Kanagawa",
-		"Nord",
 	}
 )
 
@@ -178,10 +161,7 @@ func NewApp(configPath string) (*App, error) {
 		panels:            panels,
 		runtimes:          make(map[string]*panelRuntime),
 		apps:              DiscoverMacApps(),
-		showHelpModal:     false,
-		dontShowHelpAgain: cfg.OnboardingDismissed,
-		hideQuickGuide:    cfg.OnboardingDismissed,
-		statusMsg:         "Bereit — Schalte Panels über den Switch einfach an oder aus (Live-Polling verbraucht 0 KI-Tokens).",
+		showHelpModal:     !cfg.OnboardingDismissed, // the short guide opens once, on the first start
 	}
 	if len(panels) > 0 {
 		a.selectPanel(panels[0].ID)
@@ -216,16 +196,10 @@ func (a *App) loadSettingsDraft() {
 	a.claudeModel = c.ClaudeModel
 	a.claudeKey = c.ClaudeAPIKey
 	a.shortcutText = c.LauncherShortcut
-	a.themeSelect = c.ThemeName
 }
 
 func (a *App) selectPanel(id string) {
 	a.selectedPanelID = id
-	if p := a.findPanel(id); p != nil {
-		a.editorCmdText = p.Command
-		a.editorBadgeText = p.BadgeText
-		a.editorHTMLText = p.HTML
-	}
 }
 
 func (a *App) findPanel(id string) *PanelSpec {
@@ -256,8 +230,6 @@ func (a *App) persistPanelToggle(p *PanelSpec, actionDesc string) {
 	_ = SavePanel(a.Config.PanelsDir, p)
 	a.syncAllPanelRuntimes()
 	if actionDesc != "" {
-		a.statusErr = false
-		a.statusMsg = actionDesc
 		a.toast(actionDesc)
 	}
 }
@@ -553,9 +525,7 @@ func (a *App) unpinFloatingWidget(panelID string) {
 	if rt, ok := a.runtimes[panelID]; ok {
 		rt.floating = nil // the window is closing itself
 	}
-	a.statusErr = false
-	a.statusMsg = "Desktop-Widget '" + p.Title + "' geschlossen (über den Schalter „📌 Widget“ wieder anpinnen)"
-	a.toast(a.statusMsg)
+	a.toast("Widget „" + p.Title + "“ geschlossen – über den Schalter „Widget“ wieder anpinnen")
 	a.updateUI(func() {})
 }
 
@@ -710,6 +680,12 @@ func (a *App) updateUISync(fn func()) {
 	mygo.RunOnMain(fn)
 }
 
+// clearStatus removes the error line at the bottom of the main window.
+func (a *App) clearStatus() {
+	a.statusErr = false
+	a.statusMsg = ""
+}
+
 func (a *App) toast(msg string) {
 	a.toasts = append(a.toasts, msg)
 }
@@ -727,10 +703,7 @@ func (a *App) triggerPrompt1Create() {
 	case 2:
 		reqType = "both"
 	}
-	kinds := []string{"widget", "app", "panel"}
-	chosenKind := kinds[a.createKindIdx%len(kinds)]
-	grids := []string{"3x3", "6x2"}
-	chosenGrid := grids[a.gridSizeIdx%len(grids)]
+	asWidget := a.createAsWidget
 	count := a.prompt1CountIdx + 1
 
 	var vaultEnv []string
@@ -739,15 +712,15 @@ func (a *App) triggerPrompt1Create() {
 	}
 
 	a.busy = true
-	a.busyLabel = fmt.Sprintf("KI erstellt %d %s (%s) über %s + führt omamac-check aus...", count, chosenKind, chosenGrid, a.AI.ActiveProviderSummary())
+	a.busyLabel = "KI erstellt das Panel …"
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		created, providerUsed, err := a.AI.GeneratePanels(ctx, prompt, reqType, count)
 		for _, p := range created {
-			p.Kind = chosenKind
-			p.GridSize = chosenGrid
-			if chosenKind == "widget" {
+			p.Kind = "panel"
+			if asWidget {
+				p.Kind = "widget"
 				p.PinnedFloating = true
 			}
 			_, _ = p.CheckPanelSpec(ctx, vaultEnv...)
@@ -768,9 +741,12 @@ func (a *App) triggerPrompt1Create() {
 				a.selectPanel(created[len(created)-1].ID)
 			}
 			a.syncAllPanelRuntimes()
-			a.statusErr = false
-			a.statusMsg = fmt.Sprintf("Erfolgreich erstellt & geprüft (%s): %d %s(s) [%s] aktiv!", providerUsed, len(created), chosenKind, chosenGrid)
-			a.toast(fmt.Sprintf("%d neues %s erstellt & aktiviert!", len(created), chosenKind))
+			a.clearStatus()
+			if len(created) == 1 {
+				a.toast(fmt.Sprintf("„%s“ erstellt (%s)", created[0].Title, providerUsed))
+			} else {
+				a.toast(fmt.Sprintf("%d Panels erstellt (%s)", len(created), providerUsed))
+			}
 		})
 	}()
 }
@@ -788,7 +764,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 	}
 
 	a.busy = true
-	a.busyLabel = fmt.Sprintf("KI passt '%s' an + führt omamac-check aus...", target.Title)
+	a.busyLabel = fmt.Sprintf("KI passt „%s“ an …", target.Title)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -823,9 +799,8 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			}
 			a.syncAllPanelRuntimes()
 			a.prompt2Text = ""
-			a.statusErr = false
-			a.statusMsg = fmt.Sprintf("'%s' aktualisiert & neu geladen (%s)!", updated.Title, providerUsed)
-			a.toast("Panel '" + updated.Title + "' live angepasst!")
+			a.clearStatus()
+			a.toast(fmt.Sprintf("„%s“ angepasst (%s)", updated.Title, providerUsed))
 		})
 	}()
 }

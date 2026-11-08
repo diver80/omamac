@@ -78,13 +78,13 @@ func InspectAntigravityAuth(cfg *Config) AntigravityStatus {
 
 	raw, err := os.ReadFile(tokenPath)
 	if err != nil {
-		status.StatusSummary = "No Antigravity OAuth token found (~/.gemini/antigravity-cli/antigravity-oauth-token)"
+		status.StatusSummary = "Nicht angemeldet – kein Antigravity-Token gefunden"
 		return status
 	}
 
 	var tf agyTokenFile
 	if err := json.Unmarshal(raw, &tf); err != nil {
-		status.StatusSummary = "Invalid Antigravity token format"
+		status.StatusSummary = "Antigravity-Token ist ungültig"
 		return status
 	}
 
@@ -122,22 +122,21 @@ func InspectAntigravityAuth(cfg *Config) AntigravityStatus {
 		status.Available = true
 		acct := status.AccountEmail
 		if acct == "" {
-			acct = "Antigravity OAuth Account"
+			acct = "Antigravity-Konto"
 		}
 		if status.AccountName != "" {
 			acct = fmt.Sprintf("%s (%s)", status.AccountName, acct)
 		}
-		expInfo := "OAuth Refresh Token active"
+		status.StatusSummary = "Angemeldet als " + acct
 		if tf.Token.Expiry != "" {
 			if t, err := time.Parse(time.RFC3339, tf.Token.Expiry); err == nil {
-				expInfo = "OAuth session active (auto-refresh enabled, last token " + t.Format("2006-01-02 15:04") + ")"
+				status.StatusSummary += " · Token vom " + t.Format("02.01.2006 15:04")
 			}
 		}
-		status.StatusSummary = fmt.Sprintf("Connected as %s • %s", acct, expInfo)
 	} else if !cliOK {
-		status.StatusSummary = "OAuth token present, but 'agy' CLI binary not found"
+		status.StatusSummary = "Token vorhanden, aber das Programm „agy“ fehlt"
 	} else {
-		status.StatusSummary = "Antigravity OAuth token incomplete – click 'Antigravity Login' to authenticate"
+		status.StatusSummary = "Antigravity-Token unvollständig – bitte neu anmelden"
 	}
 
 	return status

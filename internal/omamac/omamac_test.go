@@ -177,12 +177,15 @@ func TestVaultZeroLeak(t *testing.T) {
 }
 
 // TestGenerateScreenshots renders every view. The PNGs go to a temp dir unless
-// OMAMAC_SCREENSHOTS=1 is set, which refreshes docs/omamac-screenshots:
+// OMAMAC_SCREENSHOTS=1 is set, which refreshes docs/omamac-screenshots, or
+// OMAMAC_SCREENSHOT_DIR names another directory:
 //
 //	OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots
 func TestGenerateScreenshots(t *testing.T) {
 	outDir := t.TempDir()
-	if os.Getenv("OMAMAC_SCREENSHOTS") != "" {
+	if dir := os.Getenv("OMAMAC_SCREENSHOT_DIR"); dir != "" {
+		outDir = dir
+	} else if os.Getenv("OMAMAC_SCREENSHOTS") != "" {
 		outDir = filepath.Join("..", "..", "docs", "omamac-screenshots")
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
