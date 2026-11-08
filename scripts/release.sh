@@ -64,7 +64,7 @@ cask "omamac" do
 
   zap trash: [
     "~/.config/omamac",
-    "~/Library/Preferences/com.avono.omamac.plist",
+    "~/Library/Preferences/de.diver80.omamac.plist",
   ]
 
   caveats <<~EOS

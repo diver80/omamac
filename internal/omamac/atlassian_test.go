@@ -119,7 +119,7 @@ func TestImportFromJiraQuickAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := `{"instances":[
-		{"id":"inst-1","name":"avono","base_url":"https://avono.atlassian.net/","email":"a@b.c","api_token":"t1","jql_query":""},
+		{"id":"inst-1","name":"acme","base_url":"https://acme.atlassian.net/","email":"a@b.c","api_token":"t1","jql_query":""},
 		{"id":"","name":"empty","base_url":"  "}
 	]}`
 	if err := os.WriteFile(filepath.Join(legacyDir, "config.json"), []byte(legacy), 0o600); err != nil {
@@ -132,7 +132,7 @@ func TestImportFromJiraQuickAccess(t *testing.T) {
 		t.Fatalf("instances = %d", len(j.Instances))
 	}
 	inst := j.Instances[0]
-	if inst.BaseURL != "https://avono.atlassian.net" || inst.JQLQuery != defaultJiraJQL || !inst.Enabled {
+	if inst.BaseURL != "https://acme.atlassian.net" || inst.JQLQuery != defaultJiraJQL || !inst.Enabled {
 		t.Fatalf("imported = %+v", inst)
 	}
 	st, err := os.Stat(filepath.Join(dir, "jira_instances.json"))

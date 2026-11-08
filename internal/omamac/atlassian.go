@@ -487,15 +487,15 @@ func defaultDemoJiraIssues() []JiraIssue {
 	return []JiraIssue{
 		{
 			InstanceID:   "demo",
-			InstanceName: "avono",
-			BaseURL:      "https://avono.atlassian.net",
+			InstanceName: "Privat",
+			BaseURL:      "https://example.atlassian.net",
 			Key:          "OMAMAC-101",
 			Summary:      "Jira Quick-Access & Atlassian Status als native System-Module integrieren",
 			StatusName:   "In Progress",
 			CategoryKey:  "indeterminate",
 			Priority:     "High",
 			IssueType:    "Story",
-			URL:          "https://avono.atlassian.net/browse/OMAMAC-101",
+			URL:          "https://example.atlassian.net/browse/OMAMAC-101",
 		},
 		{
 			InstanceID:   "demo",
@@ -992,7 +992,7 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec) {
 						FillWidth().Padding(8, 10).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).Gap(6).Children(func() {
 						ui.Text(c, "➕ Neue Jira-Instanz").FontSize(12).Bold()
 						ui.Row(c).FillWidth().Gap(6).Children(func() {
-							ui.TextInput(c.Key("jira-new-name"), &j.NewInstName).Placeholder("Name (z. B. avono)").Grow(1)
+							ui.TextInput(c.Key("jira-new-name"), &j.NewInstName).Placeholder("Name (z. B. Firma)").Grow(1)
 							ui.TextInput(c.Key("jira-new-url"), &j.NewInstURL).Placeholder("https://firma.atlassian.net").Grow(2)
 						})
 						ui.Row(c).FillWidth().Gap(6).Children(func() {
