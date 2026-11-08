@@ -58,7 +58,7 @@ cask "omamac" do
 
   # OmaMac updates itself from GitHub releases (signed mygo updates)
   auto_updates true
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "OmaMac.app"
 
@@ -67,22 +67,34 @@ cask "omamac" do
     "~/Library/Preferences/de.diver80.omamac.plist",
   ]
 
+  # OmaMac is ad-hoc signed, not notarized: drop the download quarantine so
+  # Gatekeeper lets it start (Homebrew 7 removed --no-quarantine).
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "{{appdir}}/OmaMac.app"],
+        writable_paths: ["OmaMac.app"],
+        writable_base:  :appdir,
+        must_succeed:   false
+  end
+
   caveats <<~EOS
-    OmaMac is not notarized. If macOS blocks the first launch, run:
+    OmaMac is not notarized. If macOS still blocks the first launch, run:
       xattr -dr com.apple.quarantine /Applications/OmaMac.app
-    or install with: brew install --cask --no-quarantine diver80/tap/omamac
   EOS
 end
 CASK
 (
   cd "${TAP_DIR}"
+  # Homebrew 7 removed --no-quarantine
+  sed -i '' 's/brew install --cask --no-quarantine /brew install --cask /' README.md
+  sed -i '' '/--no-quarantine/d' README.md
   if ! grep -q "diver80/tap/omamac" README.md; then
     cat >> README.md <<'MD'
 
 To install **OmaMac** (menu bar status panels, Jira Quick-Access & Atlassian status):
 
 ```bash
-brew install --cask --no-quarantine diver80/tap/omamac
+brew install --cask diver80/tap/omamac
 ```
 
 OmaMac updates itself; `brew upgrade --cask omamac` works as well.
@@ -100,4 +112,4 @@ MD
 
 echo "✓ OmaMac ${VERSION} released"
 echo "  https://github.com/${REPO}/releases/tag/${TAG}"
-echo "  brew install --cask --no-quarantine diver80/tap/omamac"
+echo "  brew install --cask diver80/tap/omamac"

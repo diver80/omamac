@@ -17,7 +17,7 @@ Keyboard-first macOS Wal-Panel Launcher, Window Tiler & 2-Prompt Status Panel / 
 ## Installation
 
 ```bash
-brew install --cask --no-quarantine diver80/tap/omamac
+brew install --cask diver80/tap/omamac
 ```
 
 OmaMac aktualisiert sich danach selbst (signierte Updates aus den [GitHub-Releases](https://github.com/diver80/omamac/releases)).
