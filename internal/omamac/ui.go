@@ -2,6 +2,7 @@ package omamac
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -36,6 +37,18 @@ type panelRuntime struct {
 
 	lastRefresh time.Time
 	refreshing  bool
+
+	// What the open windows were built for (type + HTML): a change rebuilds them.
+	flyoutKey   string
+	floatingKey string
+}
+
+// windowKey identifies what a panel window renders; HTML windows load their document once.
+func windowKey(p *PanelSpec) string {
+	if p.Type != PanelTypeHTML {
+		return string(p.Type)
+	}
+	return string(p.Type) + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(p.HTML)))
 }
 
 // App manages the OmaMac Wal-Panel, Multi-Status-Panel Trays/Flyouts, Credentials Vault, and Settings UI.
@@ -94,6 +107,7 @@ type App struct {
 	dontShowHelpAgain bool
 	hideQuickGuide    bool
 
+	quitting  bool // set when the app quits: windows closing then must not unpin widgets or hide
 	busy      bool
 	busyLabel string
 	statusMsg string
@@ -280,6 +294,23 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 		Content:           ui.View(a.RenderWalPanelView),
 	})
 
+	// Escape / Cmd+W hide the Wal-Panel and the main window instead of destroying them,
+	// so the hotkey, the tray icon and "Hauptfenster" keep working. Quitting still closes them.
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { a.quitting = true })
+	hideOnClose := func(w *mygo.Window) {
+		w.OnClose(func(e *mygo.CloseEvent) {
+			if a.quitting {
+				return
+			}
+			e.PreventDefault()
+			w.Hide()
+		})
+	}
+	hideOnClose(a.walWin)
+	if studioWin != nil {
+		hideOnClose(studioWin)
+	}
+
 	// 2. Register global hotkey (e.g. Alt+Space)
 	if a.Config.LauncherShortcut != "" {
 		_ = mygo.GlobalShortcut.Register(a.Config.LauncherShortcut, func() {
@@ -360,6 +391,21 @@ func (a *App) syncAllPanelRuntimes() {
 			rt.tray = nil
 		}
 
+		// A changed type or HTML (Prompt 2, "Zu HTML-/Native-Ansicht") needs new windows.
+		key := windowKey(p)
+		if rt.flyout != nil && rt.flyoutKey != key {
+			if !rt.flyout.IsDestroyed() {
+				rt.flyout.Destroy()
+			}
+			rt.flyout = nil
+		}
+		if rt.floating != nil && rt.floatingKey != key {
+			if !rt.floating.IsDestroyed() {
+				rt.floating.Destroy()
+			}
+			rt.floating = nil
+		}
+
 		// Update live HTML flyout/floating if open
 		if p.Type == PanelTypeHTML {
 			a.pushHTMLPanelUpdate(rt)
@@ -376,6 +422,7 @@ func (a *App) syncAllPanelRuntimes() {
 		if p.PinnedFloating {
 			if rt.floating == nil || rt.floating.IsDestroyed() {
 				rt.floating = a.createFloatingPanelWindow(p)
+				rt.floatingKey = key
 			}
 		} else if rt.floating != nil {
 			if !rt.floating.IsDestroyed() {
@@ -427,6 +474,7 @@ func (a *App) togglePanelFlyout(panelID string) {
 		Vibrancy:     mygo.VibrancyGlass,
 		CornerRadius: 12,
 	}
+	rt.flyoutKey = windowKey(p)
 	if p.Type == PanelTypeHTML {
 		rt.flyout = mygo.NewFlyout(opts)
 		htmlDoc := p.HTML
@@ -438,37 +486,77 @@ func (a *App) togglePanelFlyout(panelID string) {
 			a.pushHTMLPanelUpdate(rt)
 		})
 	} else {
+		// Render the runtime's current spec, so a panel replaced by Prompt 2 shows its new version.
 		opts.Content = ui.View(func(c *ui.Context) {
-			a.renderNativePanelPopover(c, p, rt)
+			a.renderNativePanelPopover(c, rt.spec, rt, func() {
+				if rt.flyout != nil && !rt.flyout.IsDestroyed() {
+					rt.flyout.Hide()
+				}
+			})
 		})
 		rt.flyout = mygo.NewFlyout(opts)
 	}
 }
 
+// createFloatingPanelWindow creates the desktop widget window of a pinned panel. Closing it
+// (✕ in native panels, the window's close button in HTML panels) unpins the widget.
 func (a *App) createFloatingPanelWindow(p *PanelSpec) *mygo.Window {
+	panelID := p.ID
 	opts := mygo.WindowOptions{
-		Title:             p.Title,
-		Width:             p.Width,
-		Height:            p.Height,
-		Frameless:         true,
-		AlwaysOnTop:       true,
-		Vibrancy:          mygo.VibrancyGlass,
-		HideWindowButtons: true,
+		Title:         p.Title,
+		Width:         p.Width,
+		Height:        p.Height,
+		TitleBarStyle: mygo.TitleBarHidden,
+		AlwaysOnTop:   true,
+		Vibrancy:      mygo.VibrancyGlass,
 	}
+	var win *mygo.Window
 	if p.Type == PanelTypeHTML {
-		win := mygo.NewWindow(opts)
+		// HTML has no native header: keep the macOS window buttons for closing.
+		win = mygo.NewWindow(opts)
 		htmlDoc := p.HTML
 		if strings.TrimSpace(htmlDoc) == "" {
 			htmlDoc = synthesizeHTMLForPanel(p)
 		}
 		win.Page().LoadHTML(htmlDoc, "https://omamac.local/")
-		return win
+	} else {
+		opts.HideWindowButtons = true
+		opts.Content = ui.View(func(c *ui.Context) {
+			rt := a.runtimes[panelID]
+			spec := p
+			if rt != nil && rt.spec != nil {
+				spec = rt.spec
+			}
+			a.renderNativePanelPopover(c, spec, rt, func() {
+				if win != nil && !win.IsDestroyed() {
+					win.Close()
+				}
+			})
+		})
+		win = mygo.NewWindow(opts)
 	}
-	opts.Content = ui.View(func(c *ui.Context) {
-		rt := a.runtimes[p.ID]
-		a.renderNativePanelPopover(c, p, rt)
+	win.OnClose(func(e *mygo.CloseEvent) {
+		a.unpinFloatingWidget(panelID)
 	})
-	return mygo.NewWindow(opts)
+	return win
+}
+
+// unpinFloatingWidget is called when the user closes a desktop widget: it stays closed
+// (PinnedFloating = false) instead of being recreated by the next syncAllPanelRuntimes.
+func (a *App) unpinFloatingWidget(panelID string) {
+	p := a.findPanel(panelID)
+	if a.quitting || p == nil || !p.PinnedFloating {
+		return // quitting closes every window: the widget stays pinned for the next launch
+	}
+	p.PinnedFloating = false
+	_ = SavePanel(a.Config.PanelsDir, p)
+	if rt, ok := a.runtimes[panelID]; ok {
+		rt.floating = nil // the window is closing itself
+	}
+	a.statusErr = false
+	a.statusMsg = "Desktop-Widget '" + p.Title + "' geschlossen (über den Schalter „📌 Widget“ wieder anpinnen)"
+	a.toast(a.statusMsg)
+	a.updateUI(func() {})
 }
 
 func (a *App) pushHTMLPanelUpdate(rt *panelRuntime) {
@@ -571,12 +659,20 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 
 // refreshPanelAsync refreshes one panel in the background and re-renders all trays/popovers afterwards.
 func (a *App) refreshPanelAsync(p *PanelSpec, doneMsg string) {
+	rt := a.runtimes[p.ID]
+	if rt != nil {
+		if rt.refreshing {
+			return // a refresh of this panel is already running
+		}
+		rt.refreshing = true
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		a.refreshPanelData(ctx, p)
 		a.updateUI(func() {
-			if rt, ok := a.runtimes[p.ID]; ok {
+			if rt != nil {
+				rt.refreshing = false
 				rt.lastRefresh = time.Now()
 			}
 			a.syncAllPanelRuntimes()
@@ -596,6 +692,17 @@ func (a *App) updateUI(fn func()) {
 	if a.walWin != nil && !a.walWin.IsDestroyed() {
 		a.walWin.Invalidate()
 	}
+	if a.Jira != nil && a.Jira.boardWin != nil && !a.Jira.boardWin.IsDestroyed() {
+		a.Jira.boardWin.Invalidate()
+	}
+}
+
+// errText describes a failed AI call for the status bar.
+func errText(err error) string {
+	if err == nil {
+		return "die KI hat kein Ergebnis geliefert."
+	}
+	return err.Error()
 }
 
 // updateUISync runs fn on the main thread and waits for it (used to snapshot UI state from goroutines).
@@ -647,10 +754,10 @@ func (a *App) triggerPrompt1Create() {
 		}
 		a.updateUI(func() {
 			a.busy = false
-			if err != nil && len(created) == 0 {
+			if err != nil || len(created) == 0 {
 				a.statusErr = true
-				a.statusMsg = "Erstellung fehlgeschlagen: " + err.Error()
-				a.toast(a.statusMsg)
+				a.statusMsg = "Kein Panel erstellt — " + errText(err)
+				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
 			for _, p := range created {
@@ -691,17 +798,22 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 		}
 		a.updateUI(func() {
 			a.busy = false
-			if err != nil && updated == nil {
+			if err != nil || updated == nil {
 				a.statusErr = true
-				a.statusMsg = "Anpassung fehlgeschlagen: " + err.Error()
-				a.toast(a.statusMsg)
+				a.statusMsg = "Panel unverändert — " + errText(err)
+				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
+			replaced := false
 			for i, p := range a.panels {
 				if p.ID == panelID {
 					a.panels[i] = updated
+					replaced = true
 					break
 				}
+			}
+			if !replaced {
+				return // the panel was deleted while the AI was working: don't bring it back
 			}
 			_ = SavePanel(a.Config.PanelsDir, updated)
 			a.selectPanel(updated.ID)

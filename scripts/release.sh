@@ -33,13 +33,13 @@ git rev-parse "${TAG}" >/dev/null 2>&1 || git tag -a "${TAG}" -m "Release ${TAG}
 git push github HEAD "${TAG}"
 
 echo "▶ Build darwin/universal + upload to draft release"
-rm -rf build
+rm -rf build build.noindex
 go tool mygo build -platform darwin/universal -upload
 
 echo "▶ Publish release ${TAG} (makes it 'latest' for the auto-updater)"
 gh release edit "${TAG}" --repo "${REPO}" --draft=false --latest
 
-DMG="build/darwin-universal/omamac-${VERSION}.dmg"
+DMG="build.noindex/darwin-universal/omamac-${VERSION}.dmg"
 SHA="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
 
 echo "▶ Update Homebrew cask in ${TAP}"

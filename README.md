@@ -27,7 +27,7 @@ OmaMac aktualisiert sich danach selbst (signierte Updates aus den [GitHub-Releas
 ```bash
 go test ./...
 go run ./cmd/omamac                                   # Entwicklungsstart (ohne Auto-Update)
-go tool mygo build -platform darwin/universal         # OmaMac.app + DMG nach build/darwin-universal/
+go tool mygo build -platform darwin/universal         # OmaMac.app + DMG nach build.noindex/darwin-universal/ (.noindex: nicht in Spotlight/Launchpad)
 ```
 
 ## Release

@@ -2,9 +2,14 @@ package omamac
 
 import (
 	"context"
+	"encoding/json"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -29,43 +34,91 @@ func TestConfigAndAntigravityDetection(t *testing.T) {
 	}
 }
 
-func TestTwoPromptMultiPanelWorkflow(t *testing.T) {
+// offlineGeminiConfig selects Gemini with an API key that is missing.
+func offlineGeminiConfig(t *testing.T) *Config {
 	tmp := t.TempDir()
 	cfg := DefaultConfig()
 	cfg.PanelsDir = filepath.Join(tmp, "panels")
-	// Force offline fallback synthesizer so unit test runs deterministically in <50ms
 	cfg.ActiveProvider = ProviderGemini
 	cfg.GeminiAuthMode = GeminiAuthAPIKey
 	cfg.GeminiAPIKey = ""
 	cfg.AntigravityTokenPath = filepath.Join(tmp, "nonexistent-token")
+	return cfg
+}
 
+// A failing AI must not produce placeholder panels or silently rewrite a panel.
+func TestAIFailureCreatesAndChangesNothing(t *testing.T) {
+	ai := NewAIEngine(offlineGeminiConfig(t))
+
+	panels, _, err := ai.GeneratePanels(context.Background(), "Jira audit log", "native", 1)
+	if err == nil || len(panels) != 0 {
+		t.Fatalf("GeneratePanels offline = %d panels, err %v; want 0 panels and an error", len(panels), err)
+	}
+
+	existing := StarterPanels()[0]
+	before, _ := json.Marshal(existing)
+	refined, _, err := ai.RefinePanel(context.Background(), existing, "Färbe den Status rot")
+	if err == nil || refined != nil {
+		t.Fatalf("RefinePanel offline = %v, err %v; want nil and an error", refined, err)
+	}
+	if after, _ := json.Marshal(existing); string(after) != string(before) {
+		t.Fatalf("RefinePanel changed the existing panel although the AI failed")
+	}
+}
+
+// rewriteTransport sends every request to target (a test server).
+type rewriteTransport struct{ target *url.URL }
+
+func (rt rewriteTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.URL.Scheme, r.URL.Host = rt.target.Scheme, rt.target.Host
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+func TestTwoPromptWorkflowWithAI(t *testing.T) {
+	var reply string
+	var gotKeyHeader, gotKeyQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKeyHeader, gotKeyQuery = r.Header.Get("x-goog-api-key"), r.URL.Query().Get("key")
+		body, _ := json.Marshal(map[string]any{"candidates": []any{map[string]any{
+			"content": map[string]any{"parts": []any{map[string]any{"text": reply}}}}}})
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	target, _ := url.Parse(srv.URL)
+
+	cfg := offlineGeminiConfig(t)
+	cfg.GeminiAPIKey = "test-key"
 	ai := NewAIEngine(cfg)
+	ai.HTTPClient = &http.Client{Transport: rewriteTransport{target}}
 
-	// Prompt #1: Create 3 panels of "both" types (Native + HTML)
-	panels, _, err := ai.GeneratePanels(context.Background(), "Docker containers; Battery health; Jira sprint queue", "both", 3)
-	if err != nil {
-		t.Fatalf("GeneratePanels failed: %v", err)
+	// Prompt #1: two panels, "both" → native + html
+	reply = "```json\n[{\"title\":\"Docker\",\"status\":\"ok\"},{\"title\":\"Battery\",\"status\":\"ok\"}]\n```"
+	panels, _, err := ai.GeneratePanels(context.Background(), "Docker; Battery", "both", 2)
+	if err != nil || len(panels) != 2 {
+		t.Fatalf("GeneratePanels = %d panels, err %v", len(panels), err)
 	}
-	if len(panels) != 3 {
-		t.Fatalf("expected 3 panels created, got %d", len(panels))
+	if gotKeyHeader != "test-key" || gotKeyQuery != "" {
+		t.Fatalf("API key must be sent as header only (header %q, query %q)", gotKeyHeader, gotKeyQuery)
 	}
-	if panels[0].Type != PanelTypeNative {
-		t.Errorf("expected panel[0] to be native, got %s", panels[0].Type)
-	}
-	if panels[1].Type != PanelTypeHTML || panels[1].HTML == "" {
-		t.Errorf("expected panel[1] to be html with non-empty HTML, got type=%s", panels[1].Type)
+	if panels[0].Type != PanelTypeNative || panels[1].Type != PanelTypeHTML || panels[1].HTML == "" {
+		t.Fatalf("types = %s, %s (html %d bytes)", panels[0].Type, panels[1].Type, len(panels[1].HTML))
 	}
 
-	// Prompt #2: Refine panel[0] with warning threshold and action button
-	refined, _, err := ai.RefinePanel(context.Background(), panels[0], "Färbe den Status rot bei Alarm und füge einen Action Button hinzu")
+	// Prompt #2: refine keeps the ID and records the step
+	reply = `{"title":"Docker","status":"crit"}`
+	refined, _, err := ai.RefinePanel(context.Background(), panels[0], "Status rot bei Alarm")
 	if err != nil {
-		t.Fatalf("RefinePanel failed: %v", err)
+		t.Fatalf("RefinePanel: %v", err)
 	}
-	if refined.Status != "crit" {
-		t.Errorf("expected refined status 'crit', got %q", refined.Status)
+	if refined.ID != panels[0].ID || refined.Status != "crit" || len(refined.PromptHistory) != 2 {
+		t.Fatalf("refined = id %q status %q steps %d", refined.ID, refined.Status, len(refined.PromptHistory))
 	}
-	if len(refined.PromptHistory) != 2 {
-		t.Errorf("expected 2 prompt steps in history, got %d", len(refined.PromptHistory))
+
+	// A reply without panel JSON is an error, not a placeholder panel.
+	reply = "Usage Limit Reached"
+	if panels, _, err := ai.GeneratePanels(context.Background(), "x", "native", 1); err == nil || len(panels) != 0 {
+		t.Fatalf("non-JSON reply = %d panels, err %v; want an error", len(panels), err)
 	}
 }
 
@@ -201,4 +254,19 @@ func TestGenerateScreenshots(t *testing.T) {
 
 	app.walMode = 2
 	savePNG("05-wal-panel-launcher.png", app.RenderWalPanelView, 820, 580)
+}
+
+// A CLI that prints its error to stdout and exits non-zero ("Usage Limit Reached")
+// must count as a failure, not as the AI's answer.
+func TestClaudeCLIFailureIsAnError(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'Usage Limit Reached'\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := offlineGeminiConfig(t)
+	cfg.ClaudeCLIPath = bin
+	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
+	if err == nil || !strings.Contains(err.Error(), "Usage Limit Reached") {
+		t.Fatalf("err = %v; want an error that names the CLI output", err)
+	}
 }

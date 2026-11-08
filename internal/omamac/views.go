@@ -16,6 +16,16 @@ func pillBadge(c *ui.Context, label string, bg, fg ui.Color) ui.Element {
 	return ui.Text(c, label).FontSize(10.5).Bold().Padding(2, 8).Radius(10).Background(bg).TextColor(fg).SingleLine()
 }
 
+// closeButton draws a ✕ button that calls onClose; nothing when onClose is nil (inline previews).
+func closeButton(c *ui.Context, key string, onClose func()) {
+	if onClose == nil {
+		return
+	}
+	if ui.Button(c.Key(key), "✕").Tooltip("Schließen").Clicked() {
+		onClose()
+	}
+}
+
 func statusColors(t *ui.Theme, status string) (ui.Color, ui.Color) {
 	switch strings.ToLower(status) {
 	case "crit", "error", "danger":
@@ -436,9 +446,13 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 }
 
 // renderNativePanelPopover renders a PanelSpec of Type == "native" using GPU-accelerated mygo/ui widgets.
-func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRuntime) {
+// onClose, when not nil, adds a ✕ button to the header (menu bar popover and desktop widget).
+func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRuntime, onClose func()) {
+	if p == nil {
+		return
+	}
 	if p.BuiltinKind == BuiltinJiraQuickAccess {
-		a.renderJiraQuickAccessModule(c, p)
+		a.renderJiraQuickAccessModule(c, p, onClose)
 		return
 	}
 	t := c.Theme()
@@ -455,6 +469,7 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip("Daten jetzt aktualisieren").Clicked() {
 				a.refreshPanelAsync(p, "")
 			}
+			closeButton(c, "pop-close-"+p.ID, onClose)
 		})
 
 		if p.Subtitle != "" {
@@ -530,7 +545,9 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 							if a.Vault != nil {
 								cmd.Env = append(cmd.Environ(), a.Vault.EnvSlice()...)
 							}
-							_ = cmd.Start()
+							if cmd.Start() == nil {
+								go func() { _ = cmd.Wait() }() // reap the process (no zombies)
+							}
 						}
 						if actCopy.URL != "" {
 							_ = mygo.Shell.OpenExternal(actCopy.URL)
@@ -916,7 +933,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 					ui.Text(c, "Wähle links ein Panel aus, um die Live-Vorschau zu sehen.").TextColor(t.TextMuted)
 				} else {
 					rt := a.runtimes[sel.ID]
-					a.renderNativePanelPopover(c, sel, rt)
+					a.renderNativePanelPopover(c, sel, rt, nil)
 				}
 			})
 		})
@@ -1160,7 +1177,7 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 				ui.Text(c, "Wähle ein Panel aus, um die Vorschau zu sehen.").TextColor(t.TextMuted)
 			} else {
 				rt := a.runtimes[sel.ID]
-				a.renderNativePanelPopover(c, sel, rt)
+				a.renderNativePanelPopover(c, sel, rt, nil)
 			}
 		})
 	})

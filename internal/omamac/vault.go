@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -33,10 +34,13 @@ type vaultStoreFile struct {
 }
 
 // Vault manages centralized credentials for AI agents and status panels.
+// Panel refreshes and AI calls read it from goroutines while Settings edits it on the
+// UI thread, so mu guards Entries and values.
 type Vault struct {
 	FilePath string
 	Entries  []CredentialMeta
 	values   map[string]string
+	mu       sync.RWMutex
 }
 
 // DefaultVaultPath returns ~/.config/omamac/vault.json.
@@ -105,6 +109,12 @@ func LoadVault(path string) (*Vault, error) {
 
 // Save writes the vault metadata (and 0600 local fallback) to disk.
 func (v *Vault) Save() error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.saveLocked()
+}
+
+func (v *Vault) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(v.FilePath), 0o700); err != nil {
 		return err
 	}
@@ -129,6 +139,8 @@ func (v *Vault) Set(name, value, description string) error {
 		return fmt.Errorf("invalid credential variable name %q", name)
 	}
 	now := time.Now().Format("2006-01-02 15:04")
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	found := false
 	for i := range v.Entries {
 		if v.Entries[i].Name == envKey {
@@ -151,12 +163,14 @@ func (v *Vault) Set(name, value, description string) error {
 
 	// Store in macOS Keychain via mygo.Secrets (best-effort)
 	_ = mygo.Secrets.Service(keychainService).Set(envKey, []byte(value))
-	return v.Save()
+	return v.saveLocked()
 }
 
 // Delete removes a credential from macOS Keychain and the Vault index.
 func (v *Vault) Delete(name string) error {
 	envKey := NormalizeEnvVarName(name)
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	var next []CredentialMeta
 	for _, e := range v.Entries {
 		if e.Name != envKey {
@@ -166,7 +180,7 @@ func (v *Vault) Delete(name string) error {
 	v.Entries = next
 	delete(v.values, envKey)
 	_ = mygo.Secrets.Service(keychainService).Delete(envKey)
-	return v.Save()
+	return v.saveLocked()
 }
 
 // Get returns the secret value for name.
@@ -174,6 +188,8 @@ func (v *Vault) Get(name string) string {
 	if v == nil {
 		return ""
 	}
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	return v.values[NormalizeEnvVarName(name)]
 }
 
@@ -182,6 +198,8 @@ func (v *Vault) EnvSlice() []string {
 	if v == nil {
 		return nil
 	}
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	var out []string
 	for _, e := range v.Entries {
 		if val, ok := v.values[e.Name]; ok {
@@ -194,7 +212,12 @@ func (v *Vault) EnvSlice() []string {
 // AIPromptCatalog returns a safe description of available environment variable names (WITHOUT secret values!)
 // so the AI agent knows which $VAR_NAME variables it can use in panel commands.
 func (v *Vault) AIPromptCatalog() string {
-	if v == nil || len(v.Entries) == 0 {
+	if v == nil {
+		return "None configured."
+	}
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if len(v.Entries) == 0 {
 		return "None configured."
 	}
 	var b strings.Builder

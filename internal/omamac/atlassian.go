@@ -726,13 +726,13 @@ func (a *App) OpenFullJiraBoardWindow(p *PanelSpec) {
 		MinWidth:  820,
 		MinHeight: 500,
 		Content: ui.View(func(c *ui.Context) {
-			a.renderJiraQuickAccessModule(c, p)
+			a.renderJiraQuickAccessModule(c, p, nil)
 		}),
 	})
 }
 
 // renderJiraQuickAccessModule renders the built-in Jira Quick-Access module (Multi-Instance JQL Counter, List, 3-Column Board & Settings).
-func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec) {
+func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose func()) {
 	t := c.Theme()
 	j := a.Jira
 	if j == nil {
@@ -756,10 +756,9 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec) {
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		// Header Row
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
-			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).SingleLine()
-			pillBadge(c, "🔒 SYSTEM-MODUL", t.Accent.Alpha(0.18), t.Accent)
+			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
-			if ui.Button(c.Key("jira-open-board-win"), "⤢ Großes Board").Tooltip("Öffnet das 3-Spalten Kanban-Board in einem großen Fenster").Clicked() {
+			if ui.Button(c.Key("jira-open-board-win"), "⤢").Tooltip("Board in großem Fenster öffnen").Clicked() {
 				a.OpenFullJiraBoardWindow(p)
 			}
 			if ui.Button(c.Key("jira-refresh-btn"), "↻").Tooltip("Alle Jira-Instanzen (JQL) jetzt abfragen").Clicked() {
@@ -771,6 +770,7 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec) {
 					})
 				}()
 			}
+			closeButton(c, "jira-close-btn", onClose)
 		})
 
 		// Instance Beacons / Filter Pills + View Mode Segmented Control

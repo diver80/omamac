@@ -2,10 +2,10 @@
   "name": "OmaMac",
   "slug": "omamac",
   "identifier": "de.diver80.omamac",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "copyright": "© 2026 Frank Hess",
   "main": "./cmd/omamac",
-  "out": "build",
+  "out": "build.noindex",
   "updates": {
     "publicKey": "e4nKXYntWG3/knE9y+kgvFyXU6Ei8oZJJkm2Nh0brDo=",
     "github": "diver80/omamac"

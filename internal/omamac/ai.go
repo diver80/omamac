@@ -154,8 +154,9 @@ func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) 
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	out := strings.TrimSpace(stdout.String())
-	if err != nil && out == "" {
-		return "", fmt.Errorf("agy CLI failed: %v (%s)", err, strings.TrimSpace(stderr.String()))
+	if err != nil {
+		// CLIs print quota/login errors ("Usage Limit Reached") to stdout and exit non-zero.
+		return "", fmt.Errorf("agy CLI: %v: %s", err, cliErrorDetail(out, stderr.String()))
 	}
 	return out, nil
 }
@@ -174,10 +175,22 @@ func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, err
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	out := strings.TrimSpace(stdout.String())
-	if err != nil && out == "" {
-		return "", fmt.Errorf("claude CLI failed: %v (%s)", err, strings.TrimSpace(stderr.String()))
+	if err != nil {
+		return "", fmt.Errorf("claude CLI: %v: %s", err, cliErrorDetail(out, stderr.String()))
 	}
 	return out, nil
+}
+
+// cliErrorDetail returns the most useful part of a failed CLI's output for the error message.
+func cliErrorDetail(stdout, stderr string) string {
+	msg := strings.TrimSpace(stderr)
+	if msg == "" {
+		msg = strings.TrimSpace(stdout)
+	}
+	if msg == "" {
+		return "keine Ausgabe"
+	}
+	return truncateStr(strings.Join(strings.Fields(msg), " "), 200)
 }
 
 func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt string) (string, error) {
@@ -185,7 +198,7 @@ func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt stri
 	if apiModel == "" || strings.HasPrefix(apiModel, "gemini-4-") || strings.HasPrefix(apiModel, "gemini-3.8-") {
 		apiModel = "gemini-2.5-flash"
 	}
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", apiModel, apiKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", apiModel)
 
 	payload := map[string]any{
 		"contents": []map[string]any{
@@ -202,6 +215,7 @@ func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt stri
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey) // never in the URL: transport errors print the URL
 
 	resp, err := e.HTTPClient.Do(req)
 	if err != nil {
@@ -334,8 +348,11 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 
 	rawResp, providerLabel, err := e.Complete(ctx, sysPrompt)
 	now := time.Now().Format("15:04:05")
+	if err != nil {
+		return nil, providerLabel, fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
+	}
 
-	if err == nil {
+	{
 		if panels, parseErr := extractPanelsFromText(rawResp); parseErr == nil && len(panels) > 0 {
 			for i, p := range panels {
 				if requestedType == "native" {
@@ -373,15 +390,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 		}
 	}
 
-	// Instant resilient synthesis if LLM returned non-JSON or is offline
-	fallbackPanels := synthesizePanelsFromPrompt(userPrompt, requestedType, count, string(e.Config.ActiveProvider), now)
-	for _, p := range fallbackPanels {
-		_ = p.RunDataRefresh(ctx, vaultEnv...)
-	}
-	if err != nil {
-		return fallbackPanels, "Local Smart Synthesizer (AI offline: " + err.Error() + ")", nil
-	}
-	return fallbackPanels, providerLabel + " (Smart Schema Normalized)", nil
+	return nil, providerLabel, fmt.Errorf("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s", providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
 }
 
 // RefinePanel executes Prompt 2 (or 3+): takes an existing PanelSpec and applies a natural-language refinement prompt.
@@ -410,8 +419,11 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 	rawResp, providerLabel, err := e.Complete(ctx, sysPrompt)
 	now := time.Now().Format("15:04:05")
 	stepNum := len(existing.PromptHistory) + 1
+	if err != nil {
+		return nil, providerLabel, fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
+	}
 
-	if err == nil {
+	{
 		if panels, parseErr := extractPanelsFromText(rawResp); parseErr == nil && len(panels) > 0 {
 			updated := panels[0]
 			updated.ID = existing.ID
@@ -433,18 +445,7 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 		}
 	}
 
-	// Deterministic local refinement fallback so Prompt 2 always works immediately
-	cloned := *existing
-	applyDeterministicRefinement(&cloned, refinePrompt)
-	cloned.PromptHistory = append(existing.PromptHistory, PromptStep{
-		Step:      stepNum,
-		Prompt:    refinePrompt,
-		Provider:  string(e.Config.ActiveProvider),
-		Model:     providerLabel,
-		Timestamp: now,
-	})
-	_ = cloned.RunDataRefresh(ctx, vaultEnv...)
-	return &cloned, providerLabel, nil
+	return nil, providerLabel, fmt.Errorf("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s", providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
 }
 
 func extractPanelsFromText(raw string) ([]*PanelSpec, error) {
@@ -483,142 +484,6 @@ func extractPanelsFromText(raw string) ([]*PanelSpec, error) {
 		}
 	}
 	return nil, errors.New("could not parse PanelSpec JSON from response")
-}
-
-func synthesizePanelsFromPrompt(prompt, requestedType string, count int, provider, now string) []*PanelSpec {
-	var out []*PanelSpec
-	topics := splitPromptTopics(prompt, count)
-
-	for i := 0; i < count; i++ {
-		topic := topics[i%len(topics)]
-		pType := PanelTypeNative
-		if requestedType == "html" || (requestedType == "both" && i%2 == 1) {
-			pType = PanelTypeHTML
-		}
-
-		icon := "📊"
-		lower := strings.ToLower(topic)
-		cmd := `printf '{"badge_text":"Active","status":"ok"}'`
-		switch {
-		case strings.Contains(lower, "mydealz") || strings.Contains(lower, "mydeaz") || strings.Contains(lower, "3d") || strings.Contains(lower, "idealo") || strings.Contains(lower, "preis"):
-			icon = "🖨️"
-			cmd = Mydealz3DPrinterCommand()
-		case strings.Contains(lower, "docker") || strings.Contains(lower, "container"):
-			icon = "🐳"
-			cmd = `cnt=$(docker ps -q 2>/dev/null | wc -l | tr -d ' '); printf '{"badge_text":"%s containers","status":"ok","metrics":[{"label":"Running Containers","value":"%s","unit":"docker","status":"ok","progress":40}]}' "$cnt" "$cnt"`
-		case strings.Contains(lower, "battery") || strings.Contains(lower, "power") || strings.Contains(lower, "akku"):
-			icon = "🔋"
-			cmd = `pct=$(pmset -g batt | grep -Eo "\d+%" | head -n1); printf '{"badge_text":"%s","status":"ok","metrics":[{"label":"Battery Charge","value":"%s","unit":"macOS","status":"ok","progress":85}]}' "${pct:-100%}" "${pct:-100%}"`
-		case strings.Contains(lower, "net") || strings.Contains(lower, "ping") || strings.Contains(lower, "wifi"):
-			icon = "🌐"
-			cmd = `ms=$(ping -c 1 -W 1000 1.1.1.1 2>/dev/null | awk -F'time=' '/time=/{print $2}' | awk '{print $1}'); printf '{"badge_text":"%s ms","status":"ok","metrics":[{"label":"Cloudflare 1.1.1.1","value":"%s","unit":"ms","status":"ok","progress":20}]}' "${ms:-12}" "${ms:-12}"`
-		case strings.Contains(lower, "jira") || strings.Contains(lower, "atlassian") || strings.Contains(lower, "pr"):
-			icon = "🎫"
-			cmd = `printf '{"badge_text":"4 Open • 1 Prio1","status":"warn","metrics":[{"label":"Open Sprint Issues","value":"4","unit":"tickets","status":"ok","progress":60},{"label":"Prio-1 Escalations","value":"1","unit":"urgent","status":"warn","progress":85}]}'`
-		case strings.Contains(lower, "mem") || strings.Contains(lower, "ram") || strings.Contains(lower, "cpu"):
-			icon = "🧠"
-			cmd = `load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}'); printf '{"badge_text":"Load %s","status":"ok","metrics":[{"label":"CPU Load (1m)","value":"%s","unit":"avg","status":"ok","progress":45}]}' "$load" "$load"`
-		}
-
-		title := strings.Title(strings.TrimSpace(topic))
-		if len(title) > 36 {
-			title = title[:36]
-		}
-		if title == "" {
-			title = fmt.Sprintf("Custom Status Panel #%d", i+1)
-		}
-
-		spec := &PanelSpec{
-			ID:             fmt.Sprintf("%s-%d", Slugify(title), time.Now().Unix()%10000+int64(i)),
-			Title:          title,
-			Subtitle:       fmt.Sprintf("Generated via 2-Prompt Studio (%s mode)", strings.ToUpper(string(pType))),
-			Icon:           icon,
-			BadgeText:      "Live",
-			Status:         "ok",
-			Type:           pType,
-			Enabled:        true,
-			RefreshSeconds: 20,
-			Width:          400,
-			Height:         370,
-			Command:        cmd,
-			Metrics: []PanelMetric{
-				{Label: "Primary Telemetry", Value: "Active", Unit: "live", Status: "ok", Progress: 68},
-				{Label: "Refresh Cycle", Value: "20s", Unit: "auto", Status: "info", Progress: 100},
-			},
-			Rows: []PanelRow{
-				{Left: "Prompt Topic", Right: topic, Badge: strings.ToUpper(string(pType)), Status: "ok"},
-				{Left: "Hot-Reload", Right: "Enabled (~/.config/omamac/panels)", Badge: "LIVE", Status: "info"},
-			},
-			Actions: []PanelAction{
-				{Label: "Open Terminal", Command: "open -a Terminal", Style: "primary"},
-			},
-			PromptHistory: []PromptStep{
-				{Step: 1, Prompt: prompt, Provider: provider, Model: "Smart Synthesizer", Timestamp: now},
-			},
-			LastUpdated: now,
-		}
-		if pType == PanelTypeHTML {
-			spec.HTML = synthesizeHTMLForPanel(spec)
-		}
-		out = append(out, spec)
-	}
-	return out
-}
-
-func splitPromptTopics(prompt string, count int) []string {
-	if count <= 1 {
-		return []string{prompt}
-	}
-	for _, sep := range []string{";", " und ", " and ", ","} {
-		parts := strings.Split(prompt, sep)
-		if len(parts) >= count {
-			return parts[:count]
-		}
-	}
-	var res []string
-	for i := 0; i < count; i++ {
-		if i == 0 {
-			res = append(res, prompt+" (Overview)")
-		} else {
-			res = append(res, fmt.Sprintf("%s (Detail #%d)", prompt, i+1))
-		}
-	}
-	return res
-}
-
-func applyDeterministicRefinement(p *PanelSpec, refinePrompt string) {
-	lower := strings.ToLower(refinePrompt)
-	if strings.Contains(lower, "html") || strings.Contains(lower, "webview") || strings.Contains(lower, "chart") {
-		p.Type = PanelTypeHTML
-	} else if strings.Contains(lower, "native") || strings.Contains(lower, "dsl") {
-		p.Type = PanelTypeNative
-	}
-	if strings.Contains(lower, "rot") || strings.Contains(lower, "red") || strings.Contains(lower, "crit") || strings.Contains(lower, "alarm") {
-		p.Status = "crit"
-		p.Command = strings.ReplaceAll(p.Command, `"status":"ok"`, `"status":"crit"`)
-		p.Command = strings.ReplaceAll(p.Command, `"status":"warn"`, `"status":"crit"`)
-	} else if strings.Contains(lower, "warn") || strings.Contains(lower, "orange") || strings.Contains(lower, "gelb") {
-		p.Status = "warn"
-		p.Command = strings.ReplaceAll(p.Command, `"status":"ok"`, `"status":"warn"`)
-	} else if strings.Contains(lower, "grün") || strings.Contains(lower, "green") || strings.Contains(lower, "ok") {
-		p.Status = "ok"
-	}
-	if strings.Contains(lower, "button") || strings.Contains(lower, "action") || strings.Contains(lower, "aktion") {
-		p.Actions = append(p.Actions, PanelAction{
-			Label:   "⚡ Quick Action (" + truncateStr(refinePrompt, 18) + ")",
-			Command: "open -a Terminal",
-			Style:   "primary",
-		})
-	}
-	p.Rows = append(p.Rows, PanelRow{
-		Left:   fmt.Sprintf("Prompt #%d Applied", len(p.PromptHistory)+1),
-		Right:  truncateStr(refinePrompt, 34),
-		Badge:  "REFINED",
-		Status: p.Status,
-	})
-	if p.Type == PanelTypeHTML {
-		p.HTML = synthesizeHTMLForPanel(p)
-	}
 }
 
 func synthesizeHTMLForPanel(p *PanelSpec) string {
