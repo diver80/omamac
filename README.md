@@ -1,21 +1,23 @@
 # OmaMac
 
-Status-Panels für die macOS-Menüleiste und den Desktop, per Satz von einer KI gebaut, dazu ein Tastatur-Launcher für Programme und Fenster – inspiriert von Omarchy, nativ in Go mit [`mygo`](https://github.com/egoist/mygo).
+Status panels for the macOS menu bar and desktop, built by an AI from a single sentence, plus a keyboard launcher for apps and windows – inspired by Omarchy, written natively in Go with [`mygo`](https://github.com/egoist/mygo).
 
-## Funktionen
+The app's interface is in German.
 
-- **Panels für Menüleiste und Desktop:** Jedes Panel hat zwei Schalter – „Menüleiste“ zeigt es oben rechts, „Widget“ legt es schwebend auf den Desktop. Rechts in der Übersicht stehen Live-Vorschau, Intervall und Aktionen des gewählten Panels.
-- **Per Satz erstellen und anpassen:** „+ Neues Panel“ beschreibt ein Panel in einem Satz; die KI (Gemini über Antigravity-Login oder API-Key, oder Claude) baut Panel und Abfrage-Skript. Änderungen gehen ebenso per Satz beim Panel.
-- **Ohne KI im Betrieb:** Danach aktualisieren sich Panels lokal per Shell-/Python-Skript – ohne KI-Aufrufe und Tokens.
-- **Schnellstart (`⌥ Space`):** Ein Suchfeld für Programme, Panels, Fensteranordnung und neue Panels; mit ↑↓ und ↵ bedienbar.
-- **Vorlagen:** Fertige Panels per Schalter hinzufügen oder als Ausgangspunkt für ein eigenes KI-Panel nutzen.
-- **Tresor (macOS-Schlüsselbund):** Suchbegriffe und Tokens erhalten Panels als `$VARIABLE`; die KI sieht nur den Namen.
-- **System-Module:** Jira Quick-Access (JQL-Counter, Board, Ticket-Viewer; übernimmt die Instanzen aus `~/.jira-quick-access/config.json`) und Atlassian Status.
-- **Automatische Updates** aus den GitHub-Releases; `omamac -check <panel.json>` prüft ein Panel und rendert eine PNG-Vorschau.
+## Features
+
+- **Panels for the menu bar and the desktop:** Every panel has two switches – "Menüleiste" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
+- **Create and change panels with a sentence:** "+ Neues Panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel.
+- **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
+- **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
+- **Templates:** Add ready-made panels with a switch, or use one as the starting point for your own AI panel.
+- **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name.
+- **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
+- **Automatic updates** from the GitHub releases; `omamac -check <panel.json>` checks a panel and renders a PNG preview.
 
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
-![Schnellstart](docs/omamac-screenshots/05-schnellstart.png)
+![Launcher](docs/omamac-screenshots/05-schnellstart.png)
 
 ## Installation
 
@@ -23,20 +25,20 @@ Status-Panels für die macOS-Menüleiste und den Desktop, per Satz von einer KI 
 brew install --cask diver80/tap/omamac
 ```
 
-OmaMac aktualisiert sich danach selbst (signierte Updates aus den [GitHub-Releases](https://github.com/diver80/omamac/releases)).
+OmaMac then keeps itself up to date (signed updates from the [GitHub releases](https://github.com/diver80/omamac/releases)).
 
-## Entwicklung
+## Development
 
 ```bash
 go test ./...
-OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots   # Screenshots in docs/ erneuern
-go run ./cmd/omamac                                   # Entwicklungsstart (ohne Auto-Update)
-go tool mygo build -platform darwin/universal         # OmaMac.app + DMG nach build.noindex/darwin-universal/ (.noindex: nicht in Spotlight/Launchpad)
+OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots   # refresh the screenshots in docs/
+go run ./cmd/omamac                                   # development run (no auto-update)
+go tool mygo build -platform darwin/universal         # OmaMac.app + DMG in build.noindex/darwin-universal/ (.noindex: kept out of Spotlight/Launchpad)
 ```
 
 ## Release
 
-1. `version` in `mygo.json` erhöhen und einen Abschnitt `## <version>` in `CHANGELOG.md` anlegen (wird zu den Release-Notes im Update-Dialog).
-2. Committen, dann `./scripts/release.sh`: testet, taggt, baut, lädt das Release nach `diver80/omamac` hoch, veröffentlicht es und aktualisiert den Cask in `diver80/homebrew-tap`.
+1. Bump `version` in `mygo.json` and add a `## <version>` section to `CHANGELOG.md` (it becomes the release notes in the update dialog).
+2. Commit, then run `./scripts/release.sh`: it tests, tags, builds, uploads the release to `diver80/omamac`, publishes it and updates the cask in `diver80/homebrew-tap`.
 
-Der geheime Update-Signaturschlüssel liegt unter `~/Library/Application Support/mygo/update-keys/mygo-update.key` (alternativ `MYGO_UPDATER_PRIVATE_KEY`). **Nicht ins Repo legen und sicher sichern** — ohne ihn können installierte Apps keine Updates mehr annehmen.
+The secret update signing key lives at `~/Library/Application Support/mygo/update-keys/mygo-update.key` (or `MYGO_UPDATER_PRIVATE_KEY`). **Never put it in the repo, and keep a safe backup** – without it, installed apps can no longer accept updates.
