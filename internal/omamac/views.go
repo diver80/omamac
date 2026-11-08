@@ -777,15 +777,21 @@ func (a *App) renderTabOverview(c *ui.Context) {
 
 							borderCol := t.Border
 							borderW := float32(1.0)
+							cardBg := t.Surface
 							if isSelected {
 								borderCol = t.Accent
-								borderW = 1.5
+								borderW = 2.0
+								cardBg = t.Accent.Alpha(0.08)
 							} else if pCopy.Enabled {
 								borderCol = t.Success.Alpha(0.55)
 							}
 
 							ui.Column(c.Key("ov-card-"+pCopy.ID)).
-								FillWidth().Padding(12, 14).Radius(10).Border(borderW, borderCol).Background(t.Surface).Gap(8).Children(func() {
+								FillWidth().Padding(12, 14).Radius(10).Border(borderW, borderCol).Background(cardBg).Gap(8).
+								Cursor(ui.CursorPointer).
+								OnClick(func() {
+									a.selectPanel(pCopy.ID)
+								}).Children(func() {
 								// Row 1: Status + Title + Live Badge + Simple ON/OFF Switches!
 								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 									if pCopy.Enabled {
@@ -803,6 +809,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 									ui.Row(c).Padding(4, 8).Radius(6).Background(t.Background).AlignItems(ui.Center).Gap(6).Children(func() {
 										ui.Text(c, "Menüleiste").FontSize(11.5).Bold()
 										if ui.Switch(c.Key("ov-sw-tray-"+pCopy.ID), &pCopy.Enabled).Changed() {
+											a.selectPanel(pCopy.ID)
 											stateTxt := "deaktiviert"
 											if pCopy.Enabled {
 												stateTxt = "in der macOS-Menüleiste aktiviert"
@@ -815,6 +822,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 									ui.Row(c).Padding(4, 8).Radius(6).Background(t.Background).AlignItems(ui.Center).Gap(6).Children(func() {
 										ui.Text(c, "📌 Widget").FontSize(11.5).TextColor(t.TextMuted)
 										if ui.Switch(c.Key("ov-sw-float-"+pCopy.ID), &pCopy.PinnedFloating).Changed() {
+											a.selectPanel(pCopy.ID)
 											stateTxt := "Desktop-Widget ausgeblendet"
 											if pCopy.PinnedFloating {
 												stateTxt = "als Desktop-Widget angepinnt"
@@ -831,22 +839,8 @@ func (a *App) renderTabOverview(c *ui.Context) {
 										FontSize(10.5).TextColor(t.TextMuted)
 								})
 
-								// Row 3: Clean Action Bar
+								// Row 3: Clean Action Bar (clicking anywhere on the card already selects it for the preview)
 								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-									previewLbl := "👁 In Vorschau anzeigen"
-									if isSelected {
-										previewLbl = "✓ In Vorschau aktiv"
-									}
-									if isSelected {
-										if ui.PrimaryButton(c.Key("ov-sel-"+pCopy.ID), previewLbl).Clicked() {
-											a.selectPanel(pCopy.ID)
-										}
-									} else {
-										if ui.Button(c.Key("ov-sel-"+pCopy.ID), previewLbl).Clicked() {
-											a.selectPanel(pCopy.ID)
-										}
-									}
-
 									if ui.Button(c.Key("ov-ai-edit-"+pCopy.ID), "✨ Mit KI anpassen").Clicked() {
 										a.selectPanel(pCopy.ID)
 										a.activeTab = TabPromptStudio
