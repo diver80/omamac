@@ -1,18 +1,21 @@
-# omamac (OmaMac) — Omarchy & OmaLauncher for macOS (`mygo`)
+# OmaMac
 
-Keyboard-first macOS Wal-Panel Launcher, Window Tiler & 2-Prompt Status Panel / Desktop Widget Studio built natively in Go with `github.com/egoist/mygo`.
+Status-Panels für die macOS-Menüleiste und den Desktop, per Satz von einer KI gebaut, dazu ein Tastatur-Launcher für Programme und Fenster – inspiriert von Omarchy, nativ in Go mit [`mygo`](https://github.com/egoist/mygo).
 
-## Key Features
-- **Übersicht mit 1-Klick-Schaltern (`An / Aus`)**: Schalte Status-Panels in einer klaren Übersicht direkt per Switch für die **macOS-Menüleiste** oder als schwebendes **Desktop-Widget** ein und aus — inklusive sofortiger Live-Vorschau.
-- **0-Token Live Polling**: KI (Gemini via Antigravity OAuth Login / API Key oder Claude) wird **nur** beim einmaligen Erstellen (Schritt 1) oder Anpassen (Schritt 2) genutzt. Im laufenden Betrieb führen die Panels lokal ihr Shell-/Python-Skript mit **0 KI-Tokens** aus.
-- **Vorlagen-Store & Schnellstart (`Alt+Space`)**: Fertige Panels und Widgets in 5 Kategorien (System, Mac & Akku, Web/mydealz 3D-Drucker, Fokus-Timer, Pixel-Art Owl) direkt per Switch aktivierbar.
-- **Zentraler Tresor (`macOS Keychain`)**: Zero-Leak `$ENV_VAR` Injektion in Panels über `mygo.Secrets`.
-- **Jira Quick-Access (System-Modul)**: JQL-Counter über mehrere Jira-Instanzen, Liste, 3-Spalten-Board und Ticket-Viewer. Ersetzt die separate App `jira-quick-access` und übernimmt deren Instanzen automatisch aus `~/.jira-quick-access/config.json`.
-- **Atlassian Status (System-Modul)**: Live-Status von 8 Atlassian-Cloud-Diensten inkl. aktiver Incidents.
-- **Automatische Updates**: signierte Updates aus den GitHub-Releases (Menü „Nach Updates suchen…“).
-- **`omamac -check <panel.json>`**: Prüft Abhängigkeiten, führt ein Live-Daten-Update aus und rendert eine Retina-PNG-Vorschau.
+## Funktionen
 
-![Übersicht](docs/omamac-screenshots/01-overview-switches.png)
+- **Panels für Menüleiste und Desktop:** Jedes Panel hat zwei Schalter – „Menüleiste“ zeigt es oben rechts, „Widget“ legt es schwebend auf den Desktop. Rechts in der Übersicht stehen Live-Vorschau, Intervall und Aktionen des gewählten Panels.
+- **Per Satz erstellen und anpassen:** „+ Neues Panel“ beschreibt ein Panel in einem Satz; die KI (Gemini über Antigravity-Login oder API-Key, oder Claude) baut Panel und Abfrage-Skript. Änderungen gehen ebenso per Satz beim Panel.
+- **Ohne KI im Betrieb:** Danach aktualisieren sich Panels lokal per Shell-/Python-Skript – ohne KI-Aufrufe und Tokens.
+- **Schnellstart (`⌥ Space`):** Ein Suchfeld für Programme, Panels, Fensteranordnung und neue Panels; mit ↑↓ und ↵ bedienbar.
+- **Vorlagen:** Fertige Panels per Schalter hinzufügen oder als Ausgangspunkt für ein eigenes KI-Panel nutzen.
+- **Tresor (macOS-Schlüsselbund):** Suchbegriffe und Tokens erhalten Panels als `$VARIABLE`; die KI sieht nur den Namen.
+- **System-Module:** Jira Quick-Access (JQL-Counter, Board, Ticket-Viewer; übernimmt die Instanzen aus `~/.jira-quick-access/config.json`) und Atlassian Status.
+- **Automatische Updates** aus den GitHub-Releases; `omamac -check <panel.json>` prüft ein Panel und rendert eine PNG-Vorschau.
+
+![Panels](docs/omamac-screenshots/01-panels.png)
+
+![Schnellstart](docs/omamac-screenshots/05-schnellstart.png)
 
 ## Installation
 
@@ -26,6 +29,7 @@ OmaMac aktualisiert sich danach selbst (signierte Updates aus den [GitHub-Releas
 
 ```bash
 go test ./...
+OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots   # Screenshots in docs/ erneuern
 go run ./cmd/omamac                                   # Entwicklungsstart (ohne Auto-Update)
 go tool mygo build -platform darwin/universal         # OmaMac.app + DMG nach build.noindex/darwin-universal/ (.noindex: nicht in Spotlight/Launchpad)
 ```

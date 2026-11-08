@@ -57,9 +57,10 @@ type App struct {
 	studioWin *mygo.Window
 	walWin    *mygo.Window
 	mainTray  *mygo.Tray
+	desktop   bool      // StartDesktopServices ran: trays and windows may be created
+	walBlurAt time.Time // when the launcher last hid because it lost the focus
 
 	activeTab StudioTab
-	walMode   int // 0 = 🎛️ Übersicht & KI, 1 = 🏪 Vorlagen-Store, 2 = 🪟 Fenster & Apps
 
 	panels   []*PanelSpec
 	runtimes map[string]*panelRuntime
@@ -81,6 +82,9 @@ type App struct {
 
 	// Launcher state
 	launcherQuery string
+	launchSel     int // the chosen row
+	launchList    ui.ListState
+	iconCache     appIconCache
 
 	// Settings & Central Credentials Vault draft state
 	providerIdx   int // 0 = Gemini, 1 = Claude
@@ -249,12 +253,13 @@ func (a *App) setAllPanelsEnabled(enabled bool) {
 // registers the global Wal-Panel shortcut, and starts periodic panel data refresh.
 func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	a.studioWin = studioWin
+	a.desktop = true
 
 	// 1. Create the floating Wal-Panel (hidden initially, summoned via global shortcut or tray)
 	a.walWin = mygo.NewWindow(mygo.WindowOptions{
-		Title:             "OmaMac Wal-Panel",
-		Width:             820,
-		Height:            580,
+		Title:             "OmaMac Schnellstart",
+		Width:             680,
+		Height:            480,
 		Frameless:         true,
 		Panel:             true,
 		AlwaysOnTop:       true,
@@ -262,6 +267,13 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 		Vibrancy:          mygo.VibrancyGlass,
 		HideWindowButtons: true,
 		Content:           ui.View(a.RenderWalPanelView),
+	})
+	// Like Spotlight, the launcher goes away when another window takes the focus.
+	a.walWin.OnBlur(func() {
+		if !a.quitting && a.walWin.IsVisible() {
+			a.walBlurAt = time.Now()
+			a.walWin.Hide()
+		}
 	})
 
 	// Escape / Cmd+W hide the Wal-Panel and the main window instead of destroying them,
@@ -316,6 +328,14 @@ func (a *App) ToggleWalPanel() {
 		a.walWin.Hide()
 		return
 	}
+	// A click on the tray icon first takes the focus from the open launcher,
+	// which hides it: that click means "close", not "open again".
+	if time.Since(a.walBlurAt) < 400*time.Millisecond {
+		return
+	}
+	a.launcherQuery = ""
+	a.launchSel = 0
+	a.launchList.ScrollTo(0, ui.Start)
 	a.walWin.Center()
 	a.walWin.Show()
 	a.walWin.Focus()
@@ -332,6 +352,9 @@ func (a *App) syncAllPanelRuntimes() {
 			a.runtimes[p.ID] = rt
 		} else {
 			rt.spec = p
+		}
+		if !a.desktop {
+			continue // tests and `omamac -check`: no menu bar or windows
 		}
 
 		// Sync Menubar Tray

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -148,12 +149,12 @@ func TestUIRenderAllViews(t *testing.T) {
 		}
 	}
 
-	// Render floating Wal-Panel in all 3 modes (Overview+AI, Store, Launcher)
-	for _, mode := range []int{0, 1, 2} {
-		app.walMode = mode
-		img := ui.Render(app.RenderWalPanelView, 820, 580, 1.0)
-		if img == nil || img.Bounds().Dx() != 820 {
-			t.Fatalf("failed to render Wal-Panel mode %d", mode)
+	// Render the launcher empty and with a query
+	for _, q := range []string{"", "te", "zzzz"} {
+		app.launcherQuery = q
+		img := ui.Render(app.RenderWalPanelView, 680, 480, 1.0)
+		if img == nil || img.Bounds().Dx() != 680 {
+			t.Fatalf("failed to render the launcher for %q", q)
 		}
 	}
 }
@@ -207,6 +208,12 @@ func TestGenerateScreenshots(t *testing.T) {
 	if len(app.panels) >= 3 {
 		app.panels[2].Enabled = false
 	}
+	// The same apps on every machine, not the ones installed here
+	app.apps = nil
+	for _, name := range []string{"Safari", "Terminal", "TextEdit", "Notes", "Keynote", "Microsoft Teams", "Calendar"} {
+		app.apps = append(app.apps, QuickCommand{ID: "app-" + Slugify(name), Title: name, Subtitle: "/Applications/" + name + ".app"})
+	}
+	sort.Slice(app.apps, func(i, j int) bool { return app.apps[i].Title < app.apps[j].Title })
 	app.selectPanel("04-mydealz-3d")
 	app.prompt1Text = "Create a status panel listing current 3D-Drucker deals from mydealz.de/gruppe/3d-drucker and monitoring Idealo target price ($IDEALO_TARGET_PRICE)"
 	app.prompt1TypeIdx = 0 // Native GPU
@@ -244,15 +251,12 @@ func TestGenerateScreenshots(t *testing.T) {
 	savePNG("00-kurzanleitung.png", app.RenderStudioView, 1280, 760)
 	app.showHelpModal = false
 
-	// Floating Wal-Panel (Alt+Space) with Quick Overview Switches
-	app.walMode = 0
-	savePNG("04-wal-panel-ai.png", app.RenderWalPanelView, 820, 580)
-
-	app.walMode = 1
-	savePNG("06-wal-panel-store.png", app.RenderWalPanelView, 820, 580)
-
-	app.walMode = 2
-	savePNG("05-wal-panel-launcher.png", app.RenderWalPanelView, 820, 580)
+	// Launcher (⌥ Space): grouped while empty, ranked matches while typing
+	app.launcherQuery = ""
+	savePNG("05-schnellstart.png", app.RenderWalPanelView, 680, 480)
+	app.launcherQuery = "te"
+	app.launchSel = 0
+	savePNG("06-schnellstart-suche.png", app.RenderWalPanelView, 680, 480)
 }
 
 // A CLI that prints its error to stdout and exits non-zero ("Usage Limit Reached")
@@ -267,5 +271,63 @@ func TestClaudeCLIFailureIsAnError(t *testing.T) {
 	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
 	if err == nil || !strings.Contains(err.Error(), "Usage Limit Reached") {
 		t.Fatalf("err = %v; want an error that names the CLI output", err)
+	}
+}
+
+// The launcher is used from the keyboard: typing filters, Enter runs the chosen row.
+func TestLauncherKeyboard(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfg := DefaultConfig()
+	cfg.PanelsDir = filepath.Join(tmp, "panels")
+	_ = SaveConfig(cfgPath, cfg)
+	app, err := NewApp(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.apps = nil // no installed apps in the results
+	atl := app.findPanel("00-atlassian-status")
+	if atl == nil {
+		t.Fatalf("no Atlassian Status panel")
+	}
+	before := atl.Enabled
+
+	tt := ui.NewTester(app.RenderWalPanelView, 680, 480)
+	tt.Type("atlassian")
+	items := app.launcherItems(app.launcherQuery)
+	if len(items) < 2 || items[0].panel != atl || items[len(items)-1].kind != launchAI {
+		t.Fatalf("results for %q: first %q, %d items", app.launcherQuery, items[0].title, len(items))
+	}
+	tt.Key(0, ui.KeyEnter)
+	if atl.Enabled == before {
+		t.Fatalf("Enter did not switch the panel's menu bar entry")
+	}
+
+	tt.Key(0, ui.KeyDown)
+	if app.launchSel != 1 {
+		t.Fatalf("Down chose row %d, want 1", app.launchSel)
+	}
+	tt.Type("x") // a new query chooses the first row again
+	if app.launchSel != 0 {
+		t.Fatalf("typing kept row %d chosen", app.launchSel)
+	}
+}
+
+func TestMatchScore(t *testing.T) {
+	for _, tc := range []struct {
+		title, q string
+		want     int
+	}{
+		{"terminal", "ter", 0},
+		{"atlassian status", "sta", 1},
+		{"textedit", "edit", 2},
+		{"visual studio code", "vsc", 3},
+		{"safari", "xyz", -1},
+		{"zentriert 80 %", "zt", -1}, // two letters: no letters-in-order match
+	} {
+		if got := matchScore(tc.title, tc.q); got != tc.want {
+			t.Errorf("matchScore(%q, %q) = %d, want %d", tc.title, tc.q, got, tc.want)
+		}
 	}
 }

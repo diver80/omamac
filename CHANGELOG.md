@@ -20,6 +20,12 @@
 - Vorlagen: „Anpassen …“ öffnet den Dialog mit dem Text der Vorlage.
 - Links in Panels öffnen sich nur noch einmal (vorher doppelt).
 
+**Schnellstart als Launcher (⌥ Space)**
+
+- Ein Suchfeld für alles: Programme (mit ihren Icons), Panels, Fensteranordnung und OmaMac selbst. Treffer sortiert nach Güte; als letzter Treffer „Neues Panel mit KI“ mit dem eingegebenen Text.
+- Bedienung per Tastatur: ↑↓ wählen, ↵ startet bzw. schaltet ein Panel in der Menüleiste, esc schließt.
+- Der Schnellstart schließt sich, wenn ein anderes Fenster den Fokus bekommt.
+
 ## 1.2.2
 
 - **KI-Fehler werden angezeigt:** Ist die KI nicht erreichbar (Kontingent aufgebraucht, Login, Timeout) oder antwortet sie nicht mit Panel-JSON, wird kein Platzhalter-Panel mehr erzeugt und kein Panel verändert. Stattdessen erscheint die Fehlermeldung.
