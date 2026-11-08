@@ -340,3 +340,58 @@ func TestAntigravityArgs(t *testing.T) {
 		t.Fatalf("args = %q, want %q", got, want)
 	}
 }
+
+// A panel is deleted with ⌘⌫ or the visible button, always after a confirmation;
+// system modules cannot be deleted.
+func TestDeletePanelFlow(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfg := DefaultConfig()
+	cfg.PanelsDir = filepath.Join(tmp, "panels")
+	cfg.OnboardingDismissed = true
+	_ = SaveConfig(cfgPath, cfg)
+	app, err := NewApp(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "04-mydealz-3d"
+	app.selectPanel(id)
+	tt := ui.NewTester(app.RenderStudioView, 1320, 820)
+
+	tt.Key(ui.Cmd, ui.KeyBackspace)
+	if !app.confirmDelete || app.confirmDeleteID != id {
+		t.Fatalf("⌘⌫ did not ask to delete %s", id)
+	}
+	if err := tt.Click("Löschen"); err != nil {
+		t.Fatalf("confirm: %v (texts %q)", err, tt.Texts())
+	}
+	if app.findPanel(id) != nil {
+		t.Fatalf("panel %s still there after confirming", id)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.PanelsDir, id+".json")); !os.IsNotExist(err) {
+		t.Fatalf("panel file still on disk: %v", err)
+	}
+
+	// The visible button asks too
+	app.selectPanel("03-git-radar")
+	tt.Frame()
+	if err := tt.Click("Panel löschen …"); err != nil {
+		t.Fatal(err)
+	}
+	if !app.confirmDelete || app.confirmDeleteID != "03-git-radar" {
+		t.Fatalf("the button did not ask to delete")
+	}
+	tt.Key(0, ui.KeyEscape) // cancel
+	if app.findPanel("03-git-radar") == nil {
+		t.Fatalf("cancelling deleted the panel")
+	}
+
+	// System modules stay
+	app.selectPanel("00-atlassian-status")
+	tt.Frame()
+	tt.Key(ui.Cmd, ui.KeyBackspace)
+	if app.confirmDelete {
+		t.Fatalf("⌘⌫ offered to delete a system module")
+	}
+}

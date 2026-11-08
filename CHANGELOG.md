@@ -5,6 +5,7 @@
 - **KI über Antigravity-Login funktioniert wieder:** Mit agy 1.5 schlug „Neues Panel“ und „Mit KI anpassen“ fehl („-p took --disable-slash-commands as its prompt“). Der Prompt wird jetzt korrekt übergeben.
 - Fehlermeldungen nennen den KI-Anbieter auch dann, wenn der Aufruf schon vorher scheitert.
 - Fenstertitel ist nur noch „OmaMac“.
+- **Panels löschen leichter auffindbar:** sichtbarer Button „Panel löschen …“ beim gewählten Panel, Rechtsklick auf eine Panel-Zeile (gleiches Menü wie „⋯“) und ⌘⌫. Es wird immer nachgefragt; System-Module lassen sich weiterhin nur ausschalten.
 
 ## 1.3.0
 

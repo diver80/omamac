@@ -39,6 +39,10 @@ func (a *App) renderTabOverview(c *ui.Context) {
 		})
 		a.renderPanelDetail(c)
 	})
+	// ⌘⌫ deletes the chosen panel (a focused text field keeps the keys for itself).
+	if c.Shortcut(ui.Cmd, ui.KeyBackspace) {
+		a.askDeletePanel(a.findPanel(a.selectedPanelID))
+	}
 	a.renderDeleteConfirm(c)
 }
 
@@ -71,6 +75,7 @@ func (a *App) renderPanelRow(c *ui.Context, prefix string, p *PanelSpec, selecta
 	row := ui.Row(c.Key(prefix+"-row-"+p.ID)).FillWidth().Padding(8, 12).Radius(8).AlignItems(ui.Center).Gap(10)
 	if selectable {
 		row.Cursor(ui.CursorPointer).OnClick(func() { a.selectPanel(p.ID) })
+		row.ContextMenu(func(m *ui.Menu) { a.panelMenuItems(m, p) })
 	}
 	switch {
 	case selectable && a.selectedPanelID == p.ID:
@@ -145,6 +150,23 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 		})
 
 		a.renderPanelRefine(c, sel)
+
+		if !sel.IsBuiltin {
+			ui.Row(c).FillWidth().Children(func() {
+				ui.Spacer(c)
+				del := ui.ButtonBase(c.Key("detail-delete-"+sel.ID)).Cursor(ui.CursorPointer).Padding(2, 4)
+				hovered := del.Hovered()
+				del.Children(func() {
+					txt := ui.Text(c, "Panel löschen …").FontSize(11.5).TextColor(t.Danger.Alpha(0.8))
+					if hovered {
+						txt.TextColor(t.Danger)
+					}
+				})
+				if del.Tooltip("Löscht das Panel nach einer Rückfrage (⌘⌫)").Clicked() {
+					a.askDeletePanel(sel)
+				}
+			})
+		}
 	})
 }
 
@@ -189,29 +211,41 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 	})
 }
 
-// renderPanelMoreMenu is the ⋯ menu of a panel: the rarer actions, deleting last.
+// renderPanelMoreMenu is the ⋯ menu of a panel; a right-click on its row opens the same items.
 func (a *App) renderPanelMoreMenu(c *ui.Context, p *PanelSpec) {
 	ui.Button(c.Key("detail-more-"+p.ID), "⋯").Tooltip("Weitere Aktionen").Menu(func(m *ui.Menu) {
-		if m.Item("Jetzt aktualisieren").Chosen() {
-			a.refreshPanelAsync(p, "„"+p.Title+"“ aktualisiert")
-		}
-		if !p.IsBuiltin {
-			label := "Als HTML-Ansicht darstellen"
-			if p.Type == PanelTypeHTML {
-				label = "Als native Ansicht darstellen"
-			}
-			if m.Item(label).Chosen() {
-				a.togglePanelType(p)
-			}
-			if len(a.panels) > 1 {
-				m.Separator()
-				if m.Item("Löschen …").Chosen() {
-					a.confirmDeleteID = p.ID
-					a.confirmDelete = true
-				}
-			}
-		}
+		a.panelMenuItems(m, p)
 	})
+}
+
+// panelMenuItems are a panel's actions in its ⋯ and right-click menus, deleting last.
+func (a *App) panelMenuItems(m *ui.Menu, p *PanelSpec) {
+	if m.Item("Jetzt aktualisieren").Chosen() {
+		a.refreshPanelAsync(p, "„"+p.Title+"“ aktualisiert")
+	}
+	if p.IsBuiltin {
+		return
+	}
+	label := "Als HTML-Ansicht darstellen"
+	if p.Type == PanelTypeHTML {
+		label = "Als native Ansicht darstellen"
+	}
+	if m.Item(label).Chosen() {
+		a.togglePanelType(p)
+	}
+	m.Separator()
+	if m.Item("Löschen …").Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
+		a.askDeletePanel(p)
+	}
+}
+
+// askDeletePanel asks before deleting p; system modules cannot be deleted.
+func (a *App) askDeletePanel(p *PanelSpec) {
+	if p == nil || p.IsBuiltin {
+		return
+	}
+	a.confirmDeleteID = p.ID
+	a.confirmDelete = true
 }
 
 func (a *App) renderDeleteConfirm(c *ui.Context) {
