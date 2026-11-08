@@ -71,6 +71,8 @@ type PanelSpec struct {
 	BadgeText      string        `json:"badge_text"`              // Text shown next to Icon in macOS Menubar
 	Status         string        `json:"status"`                  // "ok", "warn", "crit", "info"
 	Type           PanelType     `json:"type"`                    // "native" (mygo/ui) or "html" (WebView)
+	IsBuiltin      bool          `json:"is_builtin,omitempty"`    // True for pre-delivered system modules (not AI-editable)
+	BuiltinKind    string        `json:"builtin_kind,omitempty"`  // "atlassian-status" or "jira-quick-access"
 	Enabled        bool          `json:"enabled"`                 // Show in macOS Menubar as Tray + Flyout
 	PinnedFloating bool          `json:"pinned_floating"`         // Also pin as floating desktop HUD / Home-Screen Widget tile
 	RefreshSeconds int           `json:"refresh_seconds"`         // Auto-refresh interval in seconds (0 AI tokens used!)
@@ -104,6 +106,10 @@ func (p *PanelSpec) Normalize() {
 		if p.ID == "" {
 			p.ID = fmt.Sprintf("panel-%d", time.Now().Unix())
 		}
+	}
+	if p.BuiltinKind != "" {
+		p.IsBuiltin = true
+		p.Type = PanelTypeNative // system modules render natively (board, ticket viewer)
 	}
 	if p.Kind == "" {
 		p.Kind = "panel"
@@ -265,7 +271,8 @@ func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) erro
 	return nil
 }
 
-// LoadPanels reads all *.json panel definitions from dir (or seeds defaults if empty).
+// LoadPanels reads all *.json panel definitions from dir (or seeds defaults if empty),
+// and ensures pre-delivered BuiltinSystemPanels are always present.
 func LoadPanels(dir string) ([]*PanelSpec, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -276,6 +283,7 @@ func LoadPanels(dir string) ([]*PanelSpec, error) {
 	}
 
 	var panels []*PanelSpec
+	seenIDs := make(map[string]bool)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -288,6 +296,7 @@ func LoadPanels(dir string) ([]*PanelSpec, error) {
 		if err := json.Unmarshal(raw, &p); err == nil {
 			p.Normalize()
 			panels = append(panels, &p)
+			seenIDs[p.ID] = true
 		}
 	}
 
@@ -297,6 +306,14 @@ func LoadPanels(dir string) ([]*PanelSpec, error) {
 			_ = SavePanel(dir, p)
 		}
 		return defaults, nil
+	}
+
+	// Ensure pre-delivered built-in modules (Jira Quick-Access & Atlassian Status) exist even on upgraded installs
+	for _, bp := range BuiltinSystemPanels() {
+		if !seenIDs[bp.ID] {
+			_ = SavePanel(dir, bp)
+			panels = append(panels, bp)
+		}
 	}
 
 	sort.Slice(panels, func(i, j int) bool {
@@ -340,9 +357,77 @@ func Slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// DefaultStarterPanels returns 4 pre-configured panels (2 Native mygo/ui + 2 HTML WebView)
-// demonstrating Omarchy's multi-panel workflow on macOS.
+// BuiltinSystemPanels returns the pre-delivered, full-featured system modules
+// (Jira Quick-Access JQL/Board/Ticket Viewer & Atlassian Cloud Live-Status Monitor)
+// that replace the standalone jira-quick-access app. Because their feature scope is richer,
+// they are marked IsBuiltin=true (switched on/off via Overview switches, not AI-rewritten).
+func BuiltinSystemPanels() []*PanelSpec {
+	now := time.Now().Format("15:04:05")
+	return []*PanelSpec{
+		{
+			ID:             "00-jira-quick-access",
+			Title:          "Jira Quick-Access",
+			Subtitle:       "JQL-Counter über alle Instanzen • Kanban-Board • Ticket-Viewer",
+			Kind:           "app",
+			GridSize:       "6x2",
+			Icon:           "🎫",
+			BadgeText:      "Jira …",
+			Status:         "ok",
+			Type:           PanelTypeNative,
+			IsBuiltin:      true,
+			BuiltinKind:    BuiltinJiraQuickAccess,
+			Enabled:        true,
+			PinnedFloating: false,
+			RefreshSeconds: 60,
+			Width:          520,
+			Height:         500,
+			LastUpdated:    now,
+		},
+		{
+			ID:             "00-atlassian-status",
+			Title:          "Atlassian Status",
+			Subtitle:       "Live-Status von 8 Cloud-Diensten (Jira, Confluence, Bitbucket, Rovo …)",
+			Kind:           "panel",
+			GridSize:       "6x2",
+			Icon:           "🌐",
+			BadgeText:      "Atlassian OK (8/8)",
+			Status:         "ok",
+			Type:           PanelTypeNative,
+			IsBuiltin:      true,
+			BuiltinKind:    BuiltinAtlassianStatus,
+			Enabled:        true,
+			PinnedFloating: false,
+			RefreshSeconds: 180,
+			Width:          440,
+			Height:         420,
+			Metrics: []PanelMetric{
+				{Label: "Atlassian Cloud", Value: "8 / 8 OK", Unit: "operational", Status: "ok", Progress: 100},
+				{Label: "Aktive Störungen", Value: "0", Unit: "live", Status: "ok", Progress: 100},
+			},
+			Rows: []PanelRow{
+				{Left: "Jira Software", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://jira-software.status.atlassian.com"},
+				{Left: "Jira Service Management", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://jira-service-management.status.atlassian.com"},
+				{Left: "Confluence", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://confluence.status.atlassian.com"},
+				{Left: "Bitbucket", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://status.bitbucket.org"},
+				{Left: "Atlassian Migrations", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://migrations.status.atlassian.com"},
+				{Left: "Atlassian Analytics", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://analytics.status.atlassian.com"},
+				{Left: "Rovo & Rovo Dev", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://rovo.status.atlassian.com"},
+			},
+			Actions: []PanelAction{
+				{Label: "Atlassian Statuspage ↗", URL: "https://status.atlassian.com", Style: "primary"},
+			},
+			LastUpdated: now,
+		},
+	}
+}
+
+// DefaultStarterPanels returns the pre-delivered BuiltinSystemPanels plus the AI-customizable starter panels.
 func DefaultStarterPanels() []*PanelSpec {
+	return append(BuiltinSystemPanels(), StarterPanels()...)
+}
+
+// StarterPanels returns 4 AI-customizable example panels (2 Native mygo/ui + 2 HTML/data).
+func StarterPanels() []*PanelSpec {
 	now := time.Now().Format("15:04:05")
 	return []*PanelSpec{
 		{
@@ -358,7 +443,7 @@ func DefaultStarterPanels() []*PanelSpec {
 			RefreshSeconds: 15,
 			Width:          400,
 			Height:         380,
-			Command: `load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}'); disk=$(df -h / | awk 'NR==2 {print $5}'); up=$(uptime | sed 's/.*up \([^,]*\),.*/\1/'); printf '{"badge_text":"Load %s • %s","status":"ok","metrics":[{"label":"Load Avg (1m)","value":"%s","unit":"cores","status":"ok","progress":35},{"label":"Root Disk Used","value":"%s","unit":"SSD","status":"ok","progress":52}],"rows":[{"left":"System Uptime","right":"%s","badge":"ACTIVE","status":"ok"},{"left":"Architecture","right":"%s","badge":"NATIVE","status":"info"}]}' "$load" "$disk" "$load" "$disk" "$up" "$(uname -m)"`,
+			Command:        `load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}'); disk=$(df -h / | awk 'NR==2 {print $5}'); up=$(uptime | sed 's/.*up \([^,]*\),.*/\1/'); printf '{"badge_text":"Load %s • %s","status":"ok","metrics":[{"label":"Load Avg (1m)","value":"%s","unit":"cores","status":"ok","progress":35},{"label":"Root Disk Used","value":"%s","unit":"SSD","status":"ok","progress":52}],"rows":[{"left":"System Uptime","right":"%s","badge":"ACTIVE","status":"ok"},{"left":"Architecture","right":"%s","badge":"NATIVE","status":"info"}]}' "$load" "$disk" "$load" "$disk" "$up" "$(uname -m)"`,
 			Metrics: []PanelMetric{
 				{Label: "Load Avg (1m)", Value: "1.42", Unit: "cores", Status: "ok", Progress: 35},
 				{Label: "Root Disk Used", Value: "48%", Unit: "NVMe", Status: "ok", Progress: 48},
@@ -610,7 +695,7 @@ func StoreCatalog() []StoreCategoryItem {
 			Subtitle: "Top processes, Apple Silicon load & SSD telemetry",
 			Icon:     "⚡",
 			Prompt:   "Create a 6x2 system widget with CPU load, memory pressure, disk usage and top processes",
-			Spec:     DefaultStarterPanels()[0],
+			Spec:     StarterPanels()[0],
 		},
 		{
 			Category: "Mac & Device",
@@ -652,7 +737,7 @@ func StoreCatalog() []StoreCategoryItem {
 			Subtitle: "Live deals from mydealz.de/gruppe/3d-drucker + Idealo price watch",
 			Icon:     "🖨️",
 			Prompt:   "Create a 6x2 web data panel for mydealz 3D-Drucker deals and Idealo target price ($IDEALO_TARGET_PRICE)",
-			Spec:     DefaultStarterPanels()[3],
+			Spec:     StarterPanels()[3],
 		},
 		{
 			Category: "Personal",
@@ -785,4 +870,3 @@ func DefaultPixelOwlHTML() string {
 </body>
 </html>`
 }
-

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
+	updaternative "github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
 	"omamac/internal/omamac"
@@ -29,8 +31,12 @@ func main() {
 
 	mygo.App.SetName("OmaMac")
 	if mygo.App.Version() == "" {
-		mygo.App.SetVersion("1.1.0")
+		mygo.App.SetVersion("dev")
 	}
+
+	// Signed auto-updates from GitHub releases (diver80/omamac, see mygo.json "updates").
+	// In development builds the updater is disabled and stays silent.
+	mygo.Use(updaternative.Plugin)
 
 	appState, err := omamac.NewApp(*configPath)
 	if err != nil {
@@ -40,6 +46,7 @@ func main() {
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
+			updater.MenuItem(),
 			mygo.Separator(),
 			{Role: mygo.RoleHide},
 			{Role: mygo.RoleHideOthers},

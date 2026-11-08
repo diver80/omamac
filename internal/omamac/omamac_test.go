@@ -12,6 +12,7 @@ import (
 
 func TestConfigAndAntigravityDetection(t *testing.T) {
 	tmp := t.TempDir()
+	t.Setenv("HOME", tmp) // never import the real ~/.jira-quick-access instances in tests
 	cfgPath := filepath.Join(tmp, "config.json")
 
 	cfg, err := LoadConfig(cfgPath)
@@ -70,6 +71,7 @@ func TestTwoPromptMultiPanelWorkflow(t *testing.T) {
 
 func TestUIRenderAllViews(t *testing.T) {
 	tmp := t.TempDir()
+	t.Setenv("HOME", tmp) // never import the real ~/.jira-quick-access instances in tests
 	cfgPath := filepath.Join(tmp, "config.json")
 	cfg := DefaultConfig()
 	cfg.PanelsDir = filepath.Join(tmp, "panels")
@@ -128,6 +130,7 @@ func TestGenerateScreenshots(t *testing.T) {
 	}
 
 	tmp := t.TempDir()
+	t.Setenv("HOME", tmp) // never import the real ~/.jira-quick-access instances in tests
 	cfgPath := filepath.Join(tmp, "config.json")
 	cfg := DefaultConfig()
 	cfg.PanelsDir = filepath.Join(tmp, "panels")

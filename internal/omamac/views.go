@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -436,6 +437,10 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 
 // renderNativePanelPopover renders a PanelSpec of Type == "native" using GPU-accelerated mygo/ui widgets.
 func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRuntime) {
+	if p.BuiltinKind == BuiltinJiraQuickAccess {
+		a.renderJiraQuickAccessModule(c, p)
+		return
+	}
 	t := c.Theme()
 	sBg, sFg := statusColors(t, p.Status)
 
@@ -444,17 +449,11 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
 			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).SingleLine()
 			pillBadge(c, strings.ToUpper(p.Status)+" • "+p.BadgeText, sBg, sFg)
+			if p.IsBuiltin {
+				pillBadge(c, "🔒 SYSTEM-MODUL", t.Accent.Alpha(0.18), t.Accent)
+			}
 			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip("Daten jetzt aktualisieren").Clicked() {
-				go func() {
-					var env []string
-					if a.Vault != nil {
-						env = a.Vault.EnvSlice()
-					}
-					_ = p.RunDataRefresh(context.Background(), env...)
-					a.updateUI(func() {
-						a.syncAllPanelRuntimes()
-					})
-				}()
+				a.refreshPanelAsync(p, "")
 			}
 		})
 
@@ -543,8 +542,8 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 
 		ui.Spacer(c)
 
-		// Inline Prompt #2 Quick-Refiner right inside the popover!
-		if rt != nil {
+		// Inline Prompt #2 Quick-Refiner right inside the popover (not for pre-delivered system modules)
+		if rt != nil && !p.IsBuiltin {
 			ui.Divider(c)
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c.Key("pop-p2-"+p.ID), &rt.quickRefIn).
@@ -590,15 +589,8 @@ func (a *App) RenderStudioView(c *ui.Context) {
 			}
 			if ui.PrimaryButton(c.Key("hdr-refresh-all"), "↻ Alle aktualisieren").Clicked() {
 				go func() {
-					var env []string
-					if a.Vault != nil {
-						env = a.Vault.EnvSlice()
-					}
-					for _, p := range a.panels {
-						_ = p.RunDataRefresh(context.Background(), env...)
-					}
+					a.refreshDuePanels(true)
 					a.updateUI(func() {
-						a.syncAllPanelRuntimes()
 						a.toast("Alle aktiven Panels aktualisiert (0 KI-Tokens verbraucht)")
 					})
 				}()
@@ -746,9 +738,9 @@ func (a *App) renderTabOverview(c *ui.Context) {
 		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(16).Children(func() {
 			// Left Column: Overview List of all Panels with Switches
 			ui.Column(c).Grow(1).FillHeight().Gap(10).Children(func() {
-				// List Header Bar
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Column(c).Grow(1).Gap(2).Children(func() {
+				// List Header Bar (wraps so the action buttons never get clipped)
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+					ui.Column(c).Grow(1).MinWidth(280).Gap(2).Children(func() {
 						ui.Text(c, "Meine Status-Panels & Desktop-Widgets").FontSize(15.5).Bold()
 						ui.Text(c, fmt.Sprintf("%d von %d in der Menüleiste aktiv • %d als Desktop-Widget angepinnt", enabledCnt, len(a.panels), floatingCnt)).
 							FontSize(11.5).TextColor(t.TextMuted)
@@ -800,10 +792,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 										pillBadge(c, "⚪ INAKTIV", t.Border.Alpha(0.5), t.TextMuted)
 									}
 
-									ui.Text(c, pCopy.Icon+" "+pCopy.Title).FontSize(14).Bold().Grow(1).SingleLine()
-
-									// Shows exactly what appears in the macOS menu bar
-									pillBadge(c, "Menüleiste: "+pCopy.TrayLabel(), sBg, sFg)
+									ui.Text(c, pCopy.Icon+" "+pCopy.Title).FontSize(14).Bold().Grow(1).MinWidth(160).SingleLine()
 
 									// Switch 1: Menüleiste An/Aus
 									ui.Row(c).Padding(4, 8).Radius(6).Background(t.Background).AlignItems(ui.Center).Gap(6).Children(func() {
@@ -832,8 +821,9 @@ func (a *App) renderTabOverview(c *ui.Context) {
 									})
 								})
 
-								// Row 2: Subtitle & Update Interval
+								// Row 2: what appears in the macOS menu bar, Subtitle & Update Interval
 								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+									pillBadge(c, "Menüleiste: "+pCopy.TrayLabel(), sBg, sFg)
 									ui.Text(c, pCopy.Subtitle).FontSize(11.5).TextColor(t.TextMuted).Grow(1).SingleLine()
 									ui.Text(c, fmt.Sprintf("Alle %ds • %s • Stand: %s", pCopy.RefreshSeconds, strings.ToUpper(string(pCopy.Type)), pCopy.LastUpdated)).
 										FontSize(10.5).TextColor(t.TextMuted)
@@ -841,30 +831,28 @@ func (a *App) renderTabOverview(c *ui.Context) {
 
 								// Row 3: Clean Action Bar (clicking anywhere on the card already selects it for the preview)
 								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-									if ui.Button(c.Key("ov-ai-edit-"+pCopy.ID), "✨ Mit KI anpassen").Clicked() {
+									if pCopy.IsBuiltin {
+										pillBadge(c, "🔒 SYSTEM-MODUL • nicht per KI anpassbar", t.Accent.Alpha(0.15), t.Accent)
+									} else if ui.Button(c.Key("ov-ai-edit-"+pCopy.ID), "✨ Mit KI anpassen").Clicked() {
 										a.selectPanel(pCopy.ID)
 										a.activeTab = TabPromptStudio
 									}
 
 									if ui.Button(c.Key("ov-ref-"+pCopy.ID), "↻ Aktualisieren").Clicked() {
-										go func() {
-											var env []string
-											if a.Vault != nil {
-												env = a.Vault.EnvSlice()
-											}
-											_ = pCopy.RunDataRefresh(context.Background(), env...)
-											a.updateUI(func() {
-												a.syncAllPanelRuntimes()
-												a.toast("'" + pCopy.Title + "' aktualisiert")
-											})
-										}()
+										a.refreshPanelAsync(pCopy, "'"+pCopy.Title+"' aktualisiert")
+									}
+
+									if pCopy.BuiltinKind == BuiltinJiraQuickAccess {
+										if ui.Button(c.Key("ov-jira-board-"+pCopy.ID), "⤢ Board öffnen").Clicked() {
+											a.OpenFullJiraBoardWindow(pCopy)
+										}
 									}
 
 									modeBtnLbl := "Zu HTML-Ansicht"
 									if pCopy.Type == PanelTypeHTML {
 										modeBtnLbl = "Zu Native-Ansicht"
 									}
-									if ui.Button(c.Key("ov-mode-"+pCopy.ID), modeBtnLbl).Clicked() {
+									if !pCopy.IsBuiltin && ui.Button(c.Key("ov-mode-"+pCopy.ID), modeBtnLbl).Clicked() {
 										if pCopy.Type == PanelTypeNative {
 											pCopy.Type = PanelTypeHTML
 											if strings.TrimSpace(pCopy.HTML) == "" {
@@ -878,7 +866,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 
 									ui.Spacer(c)
 
-									if len(a.panels) > 1 {
+									if len(a.panels) > 1 && !pCopy.IsBuiltin {
 										if ui.Button(c.Key("ov-del-"+pCopy.ID), "🗑 Löschen").Clicked() {
 											_ = DeletePanel(a.Config.PanelsDir, pCopy.ID)
 											var next []*PanelSpec
@@ -1096,6 +1084,9 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 					ui.Text(c, "1. Welches Panel möchtest du anpassen?").FontSize(11.5).Bold().TextColor(t.TextMuted)
 					ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
 						for _, p := range a.panels {
+							if p.IsBuiltin {
+								continue
+							}
 							pCopy := p
 							lbl := fmt.Sprintf("%s %s", pCopy.Icon, pCopy.Title)
 							if a.selectedPanelID == pCopy.ID {
@@ -1115,13 +1106,16 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 						Height(70).FillWidth()
 
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						if sel != nil {
+						if sel != nil && sel.IsBuiltin {
+							ui.Text(c, fmt.Sprintf("'%s' ist ein vorgeliefertes System-Modul und kann nicht per KI angepasst werden — bitte oben ein eigenes Panel wählen.", sel.Title)).
+								FontSize(11.5).TextColor(t.Warning)
+						} else if sel != nil {
 							ui.Text(c, fmt.Sprintf("Ausgewählt: %s (%d KI-Schritte bisher)", sel.Title, len(sel.PromptHistory))).
 								FontSize(11.5).TextColor(t.TextMuted)
 						}
 						ui.Spacer(c)
 						if ui.PrimaryButton(c.Key("st-p2-submit"), "⚡ Änderung anwenden & neu laden").
-							Disabled(a.busy || sel == nil || strings.TrimSpace(a.prompt2Text) == "").Clicked() {
+							Disabled(a.busy || sel == nil || sel.IsBuiltin || strings.TrimSpace(a.prompt2Text) == "").Clicked() {
 							a.triggerPrompt2Refine(sel.ID, a.prompt2Text)
 						}
 					})
@@ -1194,6 +1188,11 @@ func (a *App) renderTabSettings(c *ui.Context) {
 					ui.Text(c, "Konfiguriere deine KI-Verbindung und speichere Suchbegriffe oder API-Tokens sicher im macOS-Schlüsselbund ($VAR_NAME).").
 						FontSize(12).TextColor(t.TextMuted)
 				})
+
+				if ui.Button(c.Key("cfg-check-update"), "⬆ Nach Updates suchen (v"+mygo.App.Version()+")").
+					Tooltip("Prüft GitHub-Releases (diver80/omamac) auf eine neue Version").Clicked() {
+					updater.CheckForUpdates()
+				}
 
 				if ui.Button(c.Key("cfg-test-ai"), "🔌 KI-Verbindung testen").Disabled(a.busy).Clicked() {
 					a.saveSettingsFromDraft()

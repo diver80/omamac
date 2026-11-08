@@ -1,0 +1,19 @@
+{
+  "name": "OmaMac",
+  "slug": "omamac",
+  "identifier": "com.avono.omamac",
+  "version": "1.2.0",
+  "copyright": "© 2026 Frank Hess",
+  "main": "./cmd/omamac",
+  "out": "build",
+  "updates": {
+    "publicKey": "e4nKXYntWG3/knE9y+kgvFyXU6Ei8oZJJkm2Nh0brDo=",
+    "github": "diver80/omamac"
+  },
+  "macos": {
+    "minimumSystemVersion": "13.0",
+    "infoPlist": {
+      "LSApplicationCategoryType": "public.app-category.productivity"
+    }
+  }
+}

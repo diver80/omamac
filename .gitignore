@@ -1,0 +1,6 @@
+/build/
+/dist/
+/omamac
+/bin/
+.DS_Store
+*.key

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,9 @@ type panelRuntime struct {
 	flyout     *mygo.Window
 	floating   *mygo.Window
 	quickRefIn string
+
+	lastRefresh time.Time
+	refreshing  bool
 }
 
 // App manages the OmaMac Wal-Panel, Multi-Status-Panel Trays/Flyouts, Credentials Vault, and Settings UI.
@@ -40,6 +44,7 @@ type App struct {
 	Config     *Config
 	Vault      *Vault
 	AI         *AIEngine
+	Jira       *JiraModuleState // Pre-delivered Jira Quick-Access module (JQL, Board, Tickets)
 	AgyStatus  AntigravityStatus
 
 	studioWin *mygo.Window
@@ -153,6 +158,7 @@ func NewApp(configPath string) (*App, error) {
 		Config:            cfg,
 		Vault:             vault,
 		AI:                aiEngine,
+		Jira:              NewJiraModuleState(filepath.Dir(cfg.PanelsDir)),
 		AgyStatus:         InspectAntigravityAuth(cfg),
 		activeTab:         TabOverview,
 		panels:            panels,
@@ -480,23 +486,105 @@ func (a *App) pushHTMLPanelUpdate(rt *panelRuntime) {
 }
 
 func (a *App) backgroundRefreshLoop() {
+	a.refreshDuePanels(true)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		var env []string
-		if a.Vault != nil {
-			env = a.Vault.EnvSlice()
-		}
+		a.refreshDuePanels(false)
+	}
+}
+
+// refreshDuePanels refreshes every active panel whose RefreshSeconds interval has elapsed
+// (or all active ones when force is true). Runs off the UI thread.
+func (a *App) refreshDuePanels(force bool) {
+	type job struct {
+		p  *PanelSpec
+		rt *panelRuntime
+	}
+	var jobs []job
+	a.updateUISync(func() {
+		now := time.Now()
 		for _, p := range a.panels {
 			if !p.Enabled && !p.PinnedFloating {
 				continue
 			}
-			_ = p.RunDataRefresh(context.Background(), env...)
+			rt := a.runtimes[p.ID]
+			if rt == nil || rt.refreshing {
+				continue
+			}
+			interval := time.Duration(p.RefreshSeconds) * time.Second
+			if interval < 15*time.Second {
+				interval = 15 * time.Second
+			}
+			if !force && now.Sub(rt.lastRefresh) < interval {
+				continue
+			}
+			rt.refreshing = true
+			jobs = append(jobs, job{p, rt})
 		}
-		a.updateUI(func() {
-			a.syncAllPanelRuntimes()
-		})
+	})
+	if len(jobs) == 0 {
+		return
 	}
+	var wg sync.WaitGroup
+	for _, jb := range jobs {
+		wg.Add(1)
+		go func(jb job) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			a.refreshPanelData(ctx, jb.p)
+		}(jb)
+	}
+	wg.Wait()
+	a.updateUI(func() {
+		now := time.Now()
+		for _, jb := range jobs {
+			jb.rt.refreshing = false
+			jb.rt.lastRefresh = now
+		}
+		a.syncAllPanelRuntimes()
+	})
+}
+
+// refreshPanelData updates a panel's live data: built-in system modules use their native Go clients,
+// all other panels run their shell Command with Vault credentials injected.
+func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
+	if p == nil {
+		return
+	}
+	switch p.BuiltinKind {
+	case BuiltinJiraQuickAccess:
+		if a.Jira != nil {
+			a.Jira.RefreshJiraPanel(ctx, p)
+		}
+	case BuiltinAtlassianStatus:
+		RefreshAtlassianStatusPanel(ctx, p)
+	default:
+		var env []string
+		if a.Vault != nil {
+			env = a.Vault.EnvSlice()
+		}
+		_ = p.RunDataRefresh(ctx, env...)
+	}
+}
+
+// refreshPanelAsync refreshes one panel in the background and re-renders all trays/popovers afterwards.
+func (a *App) refreshPanelAsync(p *PanelSpec, doneMsg string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		a.refreshPanelData(ctx, p)
+		a.updateUI(func() {
+			if rt, ok := a.runtimes[p.ID]; ok {
+				rt.lastRefresh = time.Now()
+			}
+			a.syncAllPanelRuntimes()
+			if doneMsg != "" {
+				a.toast(doneMsg)
+			}
+		})
+	}()
 }
 
 func (a *App) updateUI(fn func()) {
@@ -508,6 +596,11 @@ func (a *App) updateUI(fn func()) {
 	if a.walWin != nil && !a.walWin.IsDestroyed() {
 		a.walWin.Invalidate()
 	}
+}
+
+// updateUISync runs fn on the main thread and waits for it (used to snapshot UI state from goroutines).
+func (a *App) updateUISync(fn func()) {
+	mygo.RunOnMain(fn)
 }
 
 func (a *App) toast(msg string) {
@@ -579,7 +672,7 @@ func (a *App) triggerPrompt1Create() {
 func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 	refinePrompt = strings.TrimSpace(refinePrompt)
 	target := a.findPanel(panelID)
-	if target == nil || refinePrompt == "" || a.busy {
+	if target == nil || target.IsBuiltin || refinePrompt == "" || a.busy {
 		return
 	}
 	var vaultEnv []string
