@@ -35,13 +35,13 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(14, 16).Gap(10).Children(func() {
 		// Top drag & mode bar
 		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).DragWindow().Children(func() {
-			ui.Text(c, "⌘ OmaMac Wal-Panel").FontSize(15).Bold().TextColor(t.Accent)
-			pillBadge(c, "0-TOKEN POLLING", t.Success.Alpha(0.18), t.Success)
+			ui.Text(c, "⌘ OmaMac Schnellstart").FontSize(15).Bold().TextColor(t.Accent)
+			pillBadge(c, "0 TOKENS BEIM POLLING", t.Success.Alpha(0.18), t.Success)
 			ui.Spacer(c)
 
-			ui.Segmented(c.Key("wal-mode-seg"), &a.walMode, "✨ OmaLauncher Studio", "🏪 Store (5 Kategorien)", "🚀 Tiling & Apps")
+			ui.Segmented(c.Key("wal-mode-seg"), &a.walMode, "🎛️ Übersicht & KI", "🏪 Vorlagen-Store", "🪟 Fenster & Apps")
 
-			if ui.Button(c.Key("wal-open-studio"), "⚙ Studio ↗").Clicked() {
+			if ui.Button(c.Key("wal-open-studio"), "⚙ Hauptfenster ↗").Clicked() {
 				if a.studioWin != nil {
 					a.studioWin.Show()
 					a.studioWin.Focus()
@@ -73,31 +73,88 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 			a.renderWalLauncherMode(c)
 		}
 
-		// Bottom OmaLauncher-style Unified Dock + Omni-Bar ("claude/gemini ▾ | app öffnen oder ki fragen...")
+		// Bottom Unified Omni-Bar
 		a.renderOmaLauncherOmniBar(c)
 	})
 }
 
 func (a *App) renderWalPromptMode(c *ui.Context) {
 	t := c.Theme()
-	provName := "gemini code"
+	provName := "Gemini"
 	if a.Config.ActiveProvider == ProviderClaude {
-		provName = "claude code"
+		provName = "Claude"
 	}
+	enabledCnt, floatingCnt := a.countEnabledPanels()
 
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Gap(10).Children(func() {
-			// OmaLauncher Quick-Card (inspired by Screenshot 1: "mit claude/gemini code erstellen", [widget] [app] [panel], store durchsuchen, THEME swatches)
-			ui.Column(c).FillWidth().Padding(14, 16).Radius(8).Border(1.5, t.Accent).Background(t.Surface).Gap(10).Children(func() {
+			// Box 1: Schnell-Übersicht mit einfachem Switch zum Aktivieren/Deaktivieren!
+			ui.Column(c).FillWidth().Padding(12, 14).Radius(8).Border(1.5, t.Accent.Alpha(0.75)).Background(t.Surface).Gap(8).Children(func() {
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Text(c, "🎛️ Meine Status-Panels (Schnell-Schalter An / Aus)").FontSize(13.5).Bold()
+					pillBadge(c, fmt.Sprintf("%d in Menüleiste • %d Widget", enabledCnt, floatingCnt), t.Success.Alpha(0.18), t.Success)
+					ui.Spacer(c)
+					if ui.Button(c.Key("wal-all-on"), "Alle An").Clicked() {
+						a.setAllPanelsEnabled(true)
+					}
+					if ui.Button(c.Key("wal-all-off"), "Alle Aus").Clicked() {
+						a.setAllPanelsEnabled(false)
+					}
+				})
+
+				for _, p := range a.panels {
+					pCopy := p
+					rowBg := t.Background
+					borderCol := t.Border
+					if pCopy.Enabled {
+						borderCol = t.Success.Alpha(0.55)
+					}
+					ui.Row(c.Key("wal-ov-row-"+pCopy.ID)).FillWidth().Padding(7, 10).Radius(6).Border(1, borderCol).Background(rowBg).AlignItems(ui.Center).Gap(10).Children(func() {
+						if pCopy.Enabled {
+							pillBadge(c, "AKTIV", t.Success.Alpha(0.2), t.Success)
+						} else {
+							pillBadge(c, "AUS", t.Border.Alpha(0.5), t.TextMuted)
+						}
+						ui.Text(c, pCopy.Icon+" "+pCopy.Title).FontSize(12.5).Bold().Grow(1).SingleLine()
+						sBg, sFg := statusColors(t, pCopy.Status)
+						pillBadge(c, pCopy.TrayLabel(), sBg, sFg)
+
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "Menüleiste").FontSize(11).TextColor(t.TextMuted)
+							if ui.Switch(c.Key("wal-sw-tray-"+pCopy.ID), &pCopy.Enabled).Changed() {
+								stateTxt := "deaktiviert"
+								if pCopy.Enabled {
+									stateTxt = "in Menüleiste aktiviert"
+								}
+								a.persistPanelToggle(pCopy, fmt.Sprintf("Panel '%s' %s", pCopy.Title, stateTxt))
+							}
+						})
+
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "Widget").FontSize(11).TextColor(t.TextMuted)
+							if ui.Switch(c.Key("wal-sw-float-"+pCopy.ID), &pCopy.PinnedFloating).Changed() {
+								stateTxt := "Desktop-Widget ausgeblendet"
+								if pCopy.PinnedFloating {
+									stateTxt = "als Desktop-Widget angepinnt"
+								}
+								a.persistPanelToggle(pCopy, fmt.Sprintf("'%s' %s", pCopy.Title, stateTxt))
+							}
+						})
+					})
+				}
+			})
+
+			// Box 2: OmaLauncher Quick-Card (Neues Panel per KI + Theme-Auswahl)
+			ui.Column(c).FillWidth().Padding(12, 14).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-					ui.Text(c, fmt.Sprintf("mit %s erstellen", provName)).FontSize(14).Bold()
+					ui.Text(c, fmt.Sprintf("✨ Neues Element mit %s erstellen (Eingabe unten)", provName)).FontSize(13).Bold()
 					ui.Spacer(c)
 					pillBadge(c, a.AI.ActiveProviderSummary(), t.Accent.Alpha(0.16), t.Accent)
 				})
 
-				// Bracketed selector: [ widget ]  [ app ]  [ panel ]  +  Grid Size [ 3×3 ] [ 6×2 ]
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					kinds := []string{"[ widget ]", "[ app ]", "[ panel ]"}
+					ui.Text(c, "Art:").FontSize(11.5).TextColor(t.TextMuted)
+					kinds := []string{"[ Widget ]", "[ Mini-App ]", "[ Menüleisten-Panel ]"}
 					for idx, kLbl := range kinds {
 						idxCopy := idx
 						if a.createKindIdx == idxCopy {
@@ -111,64 +168,18 @@ func (a *App) renderWalPromptMode(c *ui.Context) {
 						}
 					}
 					ui.Spacer(c)
-					ui.Text(c, "Grid:").FontSize(11.5).TextColor(t.TextMuted)
-					ui.Segmented(c.Key("wal-grid-seg"), &a.gridSizeIdx, "3×3 (Tile)", "6×2 (Wide)")
-					ui.Segmented(c.Key("wal-p1-type-seg"), &a.prompt1TypeIdx, "Native", "HTML", "Both")
-				})
-
-				// "store durchsuchen" button row + Prompt #1 input
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					if ui.Button(c.Key("wal-browse-store"), "🏪 store durchsuchen (System · Mac · Web/mydealz · Personal · Pixel-Owl) ▸").Clicked() {
+					ui.Segmented(c.Key("wal-grid-seg"), &a.gridSizeIdx, "3×3 Kompakt", "6×2 Breit")
+					if ui.Button(c.Key("wal-browse-store"), "🏪 Store ▸").Clicked() {
 						a.walMode = 1
 					}
-					ui.Spacer(c)
-					ui.Segmented(c.Key("wal-p1-cnt-seg"), &a.prompt1CountIdx, panelCountLabels...)
 				})
 
-				// Theme Swatch Cards ("tokyo night", "vantablack", "white", "catppuccin") like Screenshot 1
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "THEME").FontSize(11).Bold().TextColor(t.Accent)
+					ui.Text(c, "FARBSCHEMA (THEME)").FontSize(10.5).Bold().TextColor(t.Accent)
 					ui.Spacer(c)
-					ui.Text(c, strings.ToLower(a.Config.ThemeName)).FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, a.Config.ThemeName).FontSize(11).TextColor(t.TextMuted)
 				})
 				a.renderThemeSwatchRow(c, "wal")
-			})
-
-			// Box 2: Prompt #2 (Refine / Iterate any existing Widget/App/Panel + owl-check status)
-			ui.Column(c).FillWidth().Padding(12, 14).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					pillBadge(c, "PROMPT #2 • REFINE + OWL-CHECK", t.Success.Alpha(0.2), t.Success)
-					ui.Text(c, "Bestehendes Widget / Panel live anpassen").FontSize(12.5).Bold()
-					ui.Spacer(c)
-					ui.Text(c, fmt.Sprintf("%d aktiv", len(a.panels))).FontSize(11).TextColor(t.TextMuted)
-				})
-
-				ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
-					for _, p := range a.panels {
-						pCopy := p
-						active := a.selectedPanelID == pCopy.ID
-						lbl := fmt.Sprintf("%s %s [%s]", pCopy.Icon, pCopy.Title, pCopy.GridSize)
-						if active {
-							if ui.PrimaryButton(c.Key("wal-sel-"+pCopy.ID), lbl).Clicked() {
-								a.selectPanel(pCopy.ID)
-							}
-						} else {
-							if ui.Button(c.Key("wal-sel-"+pCopy.ID), lbl).Clicked() {
-								a.selectPanel(pCopy.ID)
-							}
-						}
-					}
-				})
-
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.TextInput(c.Key("wal-p2-input"), &a.prompt2Text).
-						Placeholder("Prompt #2: z. B. Badge rot bei Warnung, Button ergänzen oder auf 6×2 HTML-Sparkline wechseln...").
-						Grow(1)
-					if ui.PrimaryButton(c.Key("wal-p2-go"), "⚡ Apply Prompt #2").
-						Disabled(a.busy || a.selectedPanelID == "" || strings.TrimSpace(a.prompt2Text) == "").Clicked() {
-						a.triggerPrompt2Refine(a.selectedPanelID, a.prompt2Text)
-					}
-				})
 			})
 		})
 	})
@@ -177,10 +188,10 @@ func (a *App) renderWalPromptMode(c *ui.Context) {
 func (a *App) renderThemeSwatchRow(c *ui.Context, prefix string) {
 	t := c.Theme()
 	swatches := []struct {
-		name   string
-		bg     ui.Color
-		fg     ui.Color
-		bars   [5]ui.Color
+		name string
+		bg   ui.Color
+		fg   ui.Color
+		bars [5]ui.Color
 	}{
 		{
 			name: "TokyoNight",
@@ -232,55 +243,95 @@ func (a *App) renderThemeSwatchRow(c *ui.Context, prefix string) {
 				a.Config.ThemeName = swCopy.name
 				a.themeSelect = swCopy.name
 				_ = SaveConfig(a.ConfigPath, a.Config)
-				a.toast("Theme switched to " + swCopy.name)
+				a.toast("Farbschema gewechselt zu " + swCopy.name)
 			}
 		}
 	})
 }
 
-func (a *App) renderWalStoreMode(c *ui.Context) {
+func (a *App) findMatchingPanelForStore(it StoreCategoryItem) *PanelSpec {
+	if it.Spec == nil {
+		return nil
+	}
+	for _, p := range a.panels {
+		if p.ID == it.Spec.ID || strings.HasPrefix(p.ID, it.Spec.ID+"-") || strings.EqualFold(p.Title, it.Spec.Title) {
+			return p
+		}
+	}
+	return nil
+}
+
+func (a *App) renderStoreCatalogList(c *ui.Context, keyPrefix string) {
 	t := c.Theme()
 	catalog := StoreCatalog()
 
-	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "🏪 OmaLauncher Widget & Panel Store (5 Kategorien)").FontSize(13.5).Bold()
-				ui.Spacer(c)
-				if ui.Button(c.Key("wal-store-back"), "← Zurück").Clicked() {
-					a.walMode = 0
-				}
+	for idx, item := range catalog {
+		itCopy := item
+		existing := a.findMatchingPanelForStore(itCopy)
+		isEnabled := existing != nil && existing.Enabled
+
+		borderCol := t.Border
+		if isEnabled {
+			borderCol = t.Success.Alpha(0.6)
+		}
+
+		ui.Row(c.Key(fmt.Sprintf("%s-store-item-%d", keyPrefix, idx))).
+			FillWidth().Padding(12, 14).Radius(8).Border(1, borderCol).Background(t.Surface).AlignItems(ui.Center).Gap(12).Children(func() {
+			ui.Text(c, itCopy.Icon).FontSize(22)
+			ui.Column(c).Grow(1).Gap(3).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					pillBadge(c, strings.ToUpper(itCopy.Category), t.Accent.Alpha(0.18), t.Accent)
+					pillBadge(c, fmt.Sprintf("%s • %s", itCopy.Kind, itCopy.GridSize), t.Border.Alpha(0.6), t.TextMuted)
+					ui.Text(c, itCopy.Title).FontSize(13.5).Bold().SingleLine()
+				})
+				ui.Text(c, itCopy.Subtitle).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
 			})
 
-			for idx, item := range catalog {
-				itCopy := item
-				ui.Row(c.Key(fmt.Sprintf("store-item-%d", idx))).
-					FillWidth().Padding(10, 12).Radius(8).Border(1, t.Border).Background(t.Surface).AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Text(c, itCopy.Icon).FontSize(20)
-					ui.Column(c).Grow(1).Gap(2).Children(func() {
-						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-							pillBadge(c, strings.ToUpper(itCopy.Category), t.Accent.Alpha(0.18), t.Accent)
-							pillBadge(c, fmt.Sprintf("[%s • %s]", itCopy.Kind, itCopy.GridSize), t.Border.Alpha(0.6), t.TextMuted)
-							ui.Text(c, itCopy.Title).FontSize(13).Bold().SingleLine()
-						})
-						ui.Text(c, itCopy.Subtitle).FontSize(11).TextColor(t.TextMuted).SingleLine()
-					})
-					if ui.Button(c.Key(fmt.Sprintf("store-prompt-%d", idx)), "Prompt anpassen").Clicked() {
-						a.prompt1Text = itCopy.Prompt
-						a.walMode = 0
-					}
-					if ui.PrimaryButton(c.Key(fmt.Sprintf("store-inst-%d", idx)), "+ Installieren").Clicked() {
+			// Direct Switch to activate/deactivate right from the Store!
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if isEnabled {
+					pillBadge(c, "AKTIV", t.Success.Alpha(0.2), t.Success)
+				} else {
+					pillBadge(c, "AUS", t.Border.Alpha(0.5), t.TextMuted)
+				}
+				swVal := isEnabled
+				if ui.Switch(c.Key(fmt.Sprintf("%s-store-sw-%d", keyPrefix, idx)), &swVal).Changed() {
+					if existing != nil {
+						existing.Enabled = swVal
+						a.persistPanelToggle(existing, fmt.Sprintf("Vorlage '%s' %s", existing.Title, map[bool]string{true: "aktiviert", false: "deaktiviert"}[swVal]))
+					} else if swVal && itCopy.Spec != nil {
 						clone := *itCopy.Spec
-						clone.ID = fmt.Sprintf("%s-%d", itCopy.Spec.ID, time.Now().Unix()%1000)
 						clone.Enabled = true
 						_ = SavePanel(a.Config.PanelsDir, &clone)
 						a.panels = append(a.panels, &clone)
 						a.selectPanel(clone.ID)
 						a.syncAllPanelRuntimes()
-						a.toast("Installed '" + clone.Title + "'!")
+						a.toast("Vorlage '" + clone.Title + "' installiert & aktiviert!")
 					}
-				})
+				}
+			})
+
+			if ui.Button(c.Key(fmt.Sprintf("%s-store-prompt-%d", keyPrefix, idx)), "✨ Als KI-Vorlage").Clicked() {
+				a.prompt1Text = itCopy.Prompt
+				a.activeTab = TabPromptStudio
+				a.walMode = 0
+				a.toast("Prompt-Vorlage geladen — jetzt beliebig anpassen & starten")
 			}
+		})
+	}
+}
+
+func (a *App) renderWalStoreMode(c *ui.Context) {
+	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "🏪 Fertige Panels & Widgets — Einfach per Switch einschalten").FontSize(13.5).Bold()
+				ui.Spacer(c)
+				if ui.Button(c.Key("wal-store-back"), "← Zurück zur Übersicht").Clicked() {
+					a.walMode = 0
+				}
+			})
+			a.renderStoreCatalogList(c, "wal")
 		})
 	})
 }
@@ -293,10 +344,9 @@ func (a *App) renderOmaLauncherOmniBar(c *ui.Context) {
 	}
 
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
-		// Unified Omni-Bar at the bottom (exact OmaLauncher Screenshot 1 style: "claude ▾ | app öffnen oder claude fragen...")
 		ui.Row(c).FillWidth().Padding(6, 10).Radius(8).Border(1.5, t.Accent.Alpha(0.65)).Background(t.Surface).AlignItems(ui.Center).Gap(8).Children(func() {
 			if ui.Button(c.Key("omni-prov-switch"), provShort).
-				Tooltip("Click to toggle between Google Gemini (Antigravity) and Anthropic Claude").Clicked() {
+				Tooltip("Klicken, um zwischen Google Gemini (Antigravity) und Anthropic Claude zu wechseln").Clicked() {
 				if a.Config.ActiveProvider == ProviderGemini {
 					a.Config.ActiveProvider = ProviderClaude
 					a.providerIdx = 1
@@ -308,7 +358,7 @@ func (a *App) renderOmaLauncherOmniBar(c *ui.Context) {
 			}
 
 			ui.TextInput(c.Key("omni-bar-input"), &a.prompt1Text).
-				Placeholder(fmt.Sprintf("app öffnen oder %s nach neuem [widget] / [panel] fragen...", strings.TrimSuffix(provShort, " ▾"))).
+				Placeholder(fmt.Sprintf("Neues Panel per KI beschreiben (z. B. „mydealz 3D-Drucker Deals“ oder „Docker Container“)... (%s)", strings.TrimSuffix(provShort, " ▾"))).
 				Grow(1)
 
 			if ui.PrimaryButton(c.Key("omni-bar-create"), "✨ Erstellen ↵").
@@ -325,16 +375,16 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 	ui.Column(c).Grow(1).FillWidth().Gap(10).Children(func() {
 		// Quick Window Tiling Row
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "Tile Window:").FontSize(11.5).Bold().TextColor(t.TextMuted)
+			ui.Text(c, "Fenster anordnen:").FontSize(11.5).Bold().TextColor(t.TextMuted)
 			tiles := []struct {
 				label  string
 				layout TileLayout
 			}{
-				{"⬅ Left 50%", TileLeftHalf},
-				{"➡ Right 50%", TileRightHalf},
-				{"⬆ Maximize", TileMaximize},
-				{"🎯 Center 80%", TileCenter80},
-				{"⬇ Bottom 50%", TileBottomHalf},
+				{"⬅ Links 50%", TileLeftHalf},
+				{"➡ Rechts 50%", TileRightHalf},
+				{"⬆ Vollbild", TileMaximize},
+				{"🎯 Zentriert 80%", TileCenter80},
+				{"⬇ Unten 50%", TileBottomHalf},
 			}
 			for _, tl := range tiles {
 				tlCopy := tl
@@ -349,7 +399,7 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 		})
 
 		ui.TextInput(c.Key("wal-app-search"), &a.launcherQuery).
-			Placeholder("Search macOS Applications (/Applications) or type a shell command...").
+			Placeholder("macOS-Programm suchen (/Applications)...").
 			FillWidth()
 
 		q := strings.ToLower(strings.TrimSpace(a.launcherQuery))
@@ -367,7 +417,7 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 							ui.Text(c, appCopy.Title).FontSize(12.5).Bold()
 							ui.Text(c, appCopy.Subtitle).FontSize(10.5).TextColor(t.TextMuted).SingleLine()
 						})
-						if ui.Button(c.Key("launch-"+appCopy.ID), "Launch ↵").Clicked() {
+						if ui.Button(c.Key("launch-"+appCopy.ID), "Starten ↵").Clicked() {
 							if a.walWin != nil {
 								a.walWin.Hide()
 							}
@@ -394,9 +444,13 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
 			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).SingleLine()
 			pillBadge(c, strings.ToUpper(p.Status)+" • "+p.BadgeText, sBg, sFg)
-			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip("Refresh panel telemetry now").Clicked() {
+			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip("Daten jetzt aktualisieren").Clicked() {
 				go func() {
-					_ = p.RunDataRefresh(context.Background())
+					var env []string
+					if a.Vault != nil {
+						env = a.Vault.EnvSlice()
+					}
+					_ = p.RunDataRefresh(context.Background(), env...)
 					a.updateUI(func() {
 						a.syncAllPanelRuntimes()
 					})
@@ -494,9 +548,9 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 			ui.Divider(c)
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c.Key("pop-p2-"+p.ID), &rt.quickRefIn).
-					Placeholder("✨ Prompt #2: Refine this panel live...").
+					Placeholder("✨ Mit KI anpassen (z. B. „Warnung rot färben“)...").
 					Grow(1)
-				if ui.PrimaryButton(c.Key("pop-p2-btn-"+p.ID), "Refine").
+				if ui.PrimaryButton(c.Key("pop-p2-btn-"+p.ID), "Anpassen").
 					Disabled(a.busy || strings.TrimSpace(rt.quickRefIn) == "").Clicked() {
 					promptTxt := rt.quickRefIn
 					rt.quickRefIn = ""
@@ -507,19 +561,17 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, rt *panelRun
 	})
 }
 
-// RenderStudioView renders the main OmaMac Control Center & Settings window.
+// RenderStudioView renders the main OmaMac Control Center & Overview window.
 func (a *App) RenderStudioView(c *ui.Context) {
 	t := c.Theme()
+	enabledCnt, floatingCnt := a.countEnabledPanels()
 
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
 		// Top Header Bar
 		ui.Row(c).FillWidth().Padding(10, 16).Gap(10).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 			ui.Text(c, "⌘ OmaMac").FontSize(17).Bold().TextColor(t.Accent)
-			pillBadge(c, "WAL-PANEL + MULTI-STATUS STUDIO", t.Accent.Alpha(0.16), t.Accent)
-			pillBadge(c, a.AI.ActiveProviderSummary(), t.Success.Alpha(0.16), t.Success)
-			if a.Vault != nil {
-				pillBadge(c, fmt.Sprintf("🔐 VAULT: %d VARS", len(a.Vault.Entries)), t.Accent.Alpha(0.16), t.Accent)
-			}
+			pillBadge(c, fmt.Sprintf("🟢 %d IN MENÜLEISTE • %d WIDGET", enabledCnt, floatingCnt), t.Success.Alpha(0.18), t.Success)
+			pillBadge(c, a.AI.ActiveProviderSummary(), t.Accent.Alpha(0.16), t.Accent)
 
 			ui.Spacer(c)
 
@@ -530,13 +582,13 @@ func (a *App) RenderStudioView(c *ui.Context) {
 				})
 			}
 
-			if ui.Button(c.Key("hdr-help-btn"), "❓ Hilfe & 0-Token Prinzip").Clicked() {
+			if ui.Button(c.Key("hdr-help-btn"), "❓ Kurzanleitung").Clicked() {
 				a.showHelpModal = !a.showHelpModal
 			}
-			if ui.Button(c.Key("hdr-wal-toggle"), "Toggle Wal-Panel ("+a.Config.LauncherShortcut+")").Clicked() {
+			if ui.Button(c.Key("hdr-wal-toggle"), "Schnellstart-Panel ("+a.Config.LauncherShortcut+")").Clicked() {
 				a.ToggleWalPanel()
 			}
-			if ui.PrimaryButton(c.Key("hdr-refresh-all"), "↻ Refresh All Panels").Clicked() {
+			if ui.PrimaryButton(c.Key("hdr-refresh-all"), "↻ Alle aktualisieren").Clicked() {
 				go func() {
 					var env []string
 					if a.Vault != nil {
@@ -547,7 +599,7 @@ func (a *App) RenderStudioView(c *ui.Context) {
 					}
 					a.updateUI(func() {
 						a.syncAllPanelRuntimes()
-						a.toast("Refreshed all active status panels (0 AI tokens used)")
+						a.toast("Alle aktiven Panels aktualisiert (0 KI-Tokens verbraucht)")
 					})
 				}()
 			}
@@ -565,14 +617,18 @@ func (a *App) RenderStudioView(c *ui.Context) {
 					a.renderHelpOnboardingModal(c)
 				} else {
 					switch a.activeTab {
+					case TabOverview:
+						a.renderTabOverview(c)
+					case TabStore:
+						a.renderTabStore(c)
 					case TabPromptStudio:
 						a.renderTabPromptStudio(c)
-					case TabPanelsManager:
-						a.renderTabPanelsManager(c)
 					case TabWindowManager:
 						a.renderTabWindowManager(c)
 					case TabSettings:
 						a.renderTabSettings(c)
+					default:
+						a.renderTabOverview(c)
 					}
 				}
 			})
@@ -586,8 +642,8 @@ func (a *App) RenderStudioView(c *ui.Context) {
 				col = t.Danger
 			}
 			ui.Text(c, a.statusMsg).FontSize(11.5).TextColor(col).Grow(1).SingleLine()
-			pillBadge(c, "⚡ LIVE POLLING = 0 AI TOKENS", t.Success.Alpha(0.16), t.Success)
-			ui.Text(c, fmt.Sprintf("Panels Dir: %s", a.Config.PanelsDir)).FontSize(11).TextColor(t.TextMuted)
+			pillBadge(c, "⚡ DAUERBETRIEB = 0 KI-TOKENS", t.Success.Alpha(0.16), t.Success)
+			ui.Text(c, fmt.Sprintf("Ordner: %s", a.Config.PanelsDir)).FontSize(11).TextColor(t.TextMuted)
 		})
 	})
 
@@ -597,7 +653,316 @@ func (a *App) RenderStudioView(c *ui.Context) {
 	a.toasts = a.toasts[:0]
 }
 
-// renderHelpOnboardingModal renders the First-Start & Architecture Help View explaining OmaMac and 0-Token Polling.
+func (a *App) renderStudioSidebar(c *ui.Context) {
+	t := c.Theme()
+	enabledCnt, _ := a.countEnabledPanels()
+	vaultCnt := 0
+	if a.Vault != nil {
+		vaultCnt = len(a.Vault.Entries)
+	}
+	navItems := []struct {
+		tab      StudioTab
+		label    string
+		subtitle string
+		badge    string
+	}{
+		{TabOverview, "🎛️ Übersicht & Schalter", "Panels ein-/ausschalten", fmt.Sprintf("%d/%d an", enabledCnt, len(a.panels))},
+		{TabStore, "🏪 Vorlagen-Store", "Fertige Panels & Widgets", "5 Kategorien"},
+		{TabPromptStudio, "✨ KI-Studio", "Neu erstellen & anpassen", "2-Prompt"},
+		{TabWindowManager, "🪟 Fenster & Apps", "Fenster-Tiling & Starter", fmt.Sprintf("%d Apps", len(a.apps))},
+		{TabSettings, "🔐 KI & Tresor", "Gemini, Claude & Keys", fmt.Sprintf("%d Vars", vaultCnt)},
+	}
+
+	ui.Column(c).Width(245).FillHeight().Padding(12, 10).Gap(6).Background(t.Surface).Children(func() {
+		ui.Text(c, "NAVIGATION").FontSize(10).Bold().TextColor(t.TextMuted).Padding(4, 8)
+		for _, item := range navItems {
+			it := item
+			active := a.activeTab == it.tab && !a.showHelpModal
+			btn := ui.ButtonBase(c.Key(fmt.Sprintf("side-%d", it.tab))).
+				FillWidth().Padding(9, 10).Radius(8).Cursor(ui.CursorPointer)
+			fg := t.Text
+			if active {
+				btn.Background(t.Accent.Alpha(0.16))
+				fg = t.Accent
+			} else if btn.Hovered() {
+				btn.Background(t.SurfaceHover)
+			}
+			btn.Children(func() {
+				ui.Column(c).FillWidth().Gap(2).Children(func() {
+					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+						ui.Text(c, it.label).FontSize(12.5).Bold().TextColor(fg).Grow(1).SingleLine()
+						pillBadge(c, it.badge, t.Border.Alpha(0.6), t.TextMuted)
+					})
+					ui.Text(c, it.subtitle).FontSize(10.5).TextColor(t.TextMuted).SingleLine()
+				})
+			})
+			if btn.Clicked() {
+				a.showHelpModal = false
+				a.activeTab = it.tab
+				if it.tab == TabSettings {
+					a.AgyStatus = InspectAntigravityAuth(a.Config)
+				}
+			}
+		}
+
+		ui.Spacer(c)
+
+		// Compact explanation box at bottom of sidebar
+		ui.Column(c).FillWidth().Padding(10).Radius(8).Border(1, t.Border).Gap(4).Children(func() {
+			ui.Text(c, "💡 Kurz erklärt").FontSize(11).Bold().TextColor(t.Accent)
+			ui.Text(c, "• Schalter An = Erscheint oben in deiner macOS-Menüleiste\n• Widget An = Schwebt auf dem Desktop\n• 0 KI-Tokens beim Live-Polling!").
+				FontSize(10.5).TextColor(t.TextMuted)
+		})
+	})
+}
+
+// renderTabOverview renders the main self-explanatory dashboard with simple On/Off Switches for each panel
+// on the left and a live interactive preview + quick AI refiner on the right.
+func (a *App) renderTabOverview(c *ui.Context) {
+	t := c.Theme()
+	enabledCnt, floatingCnt := a.countEnabledPanels()
+
+	ui.Column(c).Grow(1).FillWidth().Padding(16).Gap(12).Children(func() {
+		// Collapsible 3-Step Quick Guide so the UI is immediately understandable
+		if !a.hideQuickGuide {
+			ui.Row(c).FillWidth().Padding(12, 16).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).AlignItems(ui.Center).Gap(14).Children(func() {
+				ui.Column(c).Grow(1).Gap(4).Children(func() {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						pillBadge(c, "SO EINFACH GEHT'S", t.Accent.Alpha(0.2), t.Accent)
+						ui.Text(c, "Willkommen in der OmaMac Übersicht — Steuere deine macOS Status-Panels mit einem Klick").FontSize(13).Bold()
+					})
+					ui.Text(c, "1️⃣ Schalter „Menüleiste“ umlegen → Das Panel erscheint sofort oben rechts in deiner macOS-Menüleiste (oder als „Desktop-Widget“).\n2️⃣ Auf eine Karte klicken → Rechts siehst du sofort die Live-Vorschau und kannst das Panel per KI-Satz anpassen.").
+						FontSize(11.5).TextColor(t.TextMuted)
+				})
+				if ui.Button(c.Key("ov-hide-guide"), "Hinweis ausblenden ✕").Clicked() {
+					a.hideQuickGuide = true
+					a.Config.OnboardingDismissed = true
+					_ = SaveConfig(a.ConfigPath, a.Config)
+				}
+			})
+		}
+
+		// Main Split: Left = Overview List with Switches | Right = Live Preview & Quick Refine
+		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(16).Children(func() {
+			// Left Column: Overview List of all Panels with Switches
+			ui.Column(c).Grow(1).FillHeight().Gap(10).Children(func() {
+				// List Header Bar
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Column(c).Grow(1).Gap(2).Children(func() {
+						ui.Text(c, "Meine Status-Panels & Desktop-Widgets").FontSize(15.5).Bold()
+						ui.Text(c, fmt.Sprintf("%d von %d in der Menüleiste aktiv • %d als Desktop-Widget angepinnt", enabledCnt, len(a.panels), floatingCnt)).
+							FontSize(11.5).TextColor(t.TextMuted)
+					})
+					if ui.Button(c.Key("ov-all-on"), "Alle aktivieren").Clicked() {
+						a.setAllPanelsEnabled(true)
+					}
+					if ui.Button(c.Key("ov-all-off"), "Alle deaktivieren").Clicked() {
+						a.setAllPanelsEnabled(false)
+					}
+					if ui.Button(c.Key("ov-go-store"), "🏪 + Aus Store").Clicked() {
+						a.activeTab = TabStore
+					}
+					if ui.PrimaryButton(c.Key("ov-go-ai"), "✨ + Neues KI-Panel").Clicked() {
+						a.activeTab = TabPromptStudio
+					}
+				})
+
+				// Scrollable Panel Cards with clear Switches
+				ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+					ui.Column(c).FillWidth().Gap(10).Children(func() {
+						for _, p := range a.panels {
+							pCopy := p
+							isSelected := a.selectedPanelID == pCopy.ID
+							sBg, sFg := statusColors(t, pCopy.Status)
+
+							borderCol := t.Border
+							borderW := float32(1.0)
+							if isSelected {
+								borderCol = t.Accent
+								borderW = 1.5
+							} else if pCopy.Enabled {
+								borderCol = t.Success.Alpha(0.55)
+							}
+
+							ui.Column(c.Key("ov-card-"+pCopy.ID)).
+								FillWidth().Padding(12, 14).Radius(10).Border(borderW, borderCol).Background(t.Surface).Gap(8).Children(func() {
+								// Row 1: Status + Title + Live Badge + Simple ON/OFF Switches!
+								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+									if pCopy.Enabled {
+										pillBadge(c, "🟢 AKTIV", t.Success.Alpha(0.20), t.Success)
+									} else {
+										pillBadge(c, "⚪ INAKTIV", t.Border.Alpha(0.5), t.TextMuted)
+									}
+
+									ui.Text(c, pCopy.Icon+" "+pCopy.Title).FontSize(14).Bold().Grow(1).SingleLine()
+
+									// Shows exactly what appears in the macOS menu bar
+									pillBadge(c, "Menüleiste: "+pCopy.TrayLabel(), sBg, sFg)
+
+									// Switch 1: Menüleiste An/Aus
+									ui.Row(c).Padding(4, 8).Radius(6).Background(t.Background).AlignItems(ui.Center).Gap(6).Children(func() {
+										ui.Text(c, "Menüleiste").FontSize(11.5).Bold()
+										if ui.Switch(c.Key("ov-sw-tray-"+pCopy.ID), &pCopy.Enabled).Changed() {
+											stateTxt := "deaktiviert"
+											if pCopy.Enabled {
+												stateTxt = "in der macOS-Menüleiste aktiviert"
+											}
+											a.persistPanelToggle(pCopy, fmt.Sprintf("Panel '%s' %s", pCopy.Title, stateTxt))
+										}
+									})
+
+									// Switch 2: Desktop-Widget An/Aus
+									ui.Row(c).Padding(4, 8).Radius(6).Background(t.Background).AlignItems(ui.Center).Gap(6).Children(func() {
+										ui.Text(c, "📌 Widget").FontSize(11.5).TextColor(t.TextMuted)
+										if ui.Switch(c.Key("ov-sw-float-"+pCopy.ID), &pCopy.PinnedFloating).Changed() {
+											stateTxt := "Desktop-Widget ausgeblendet"
+											if pCopy.PinnedFloating {
+												stateTxt = "als Desktop-Widget angepinnt"
+											}
+											a.persistPanelToggle(pCopy, fmt.Sprintf("'%s' %s", pCopy.Title, stateTxt))
+										}
+									})
+								})
+
+								// Row 2: Subtitle & Update Interval
+								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+									ui.Text(c, pCopy.Subtitle).FontSize(11.5).TextColor(t.TextMuted).Grow(1).SingleLine()
+									ui.Text(c, fmt.Sprintf("Alle %ds • %s • Stand: %s", pCopy.RefreshSeconds, strings.ToUpper(string(pCopy.Type)), pCopy.LastUpdated)).
+										FontSize(10.5).TextColor(t.TextMuted)
+								})
+
+								// Row 3: Clean Action Bar
+								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+									previewLbl := "👁 In Vorschau anzeigen"
+									if isSelected {
+										previewLbl = "✓ In Vorschau aktiv"
+									}
+									if isSelected {
+										if ui.PrimaryButton(c.Key("ov-sel-"+pCopy.ID), previewLbl).Clicked() {
+											a.selectPanel(pCopy.ID)
+										}
+									} else {
+										if ui.Button(c.Key("ov-sel-"+pCopy.ID), previewLbl).Clicked() {
+											a.selectPanel(pCopy.ID)
+										}
+									}
+
+									if ui.Button(c.Key("ov-ai-edit-"+pCopy.ID), "✨ Mit KI anpassen").Clicked() {
+										a.selectPanel(pCopy.ID)
+										a.activeTab = TabPromptStudio
+									}
+
+									if ui.Button(c.Key("ov-ref-"+pCopy.ID), "↻ Aktualisieren").Clicked() {
+										go func() {
+											var env []string
+											if a.Vault != nil {
+												env = a.Vault.EnvSlice()
+											}
+											_ = pCopy.RunDataRefresh(context.Background(), env...)
+											a.updateUI(func() {
+												a.syncAllPanelRuntimes()
+												a.toast("'" + pCopy.Title + "' aktualisiert")
+											})
+										}()
+									}
+
+									modeBtnLbl := "Zu HTML-Ansicht"
+									if pCopy.Type == PanelTypeHTML {
+										modeBtnLbl = "Zu Native-Ansicht"
+									}
+									if ui.Button(c.Key("ov-mode-"+pCopy.ID), modeBtnLbl).Clicked() {
+										if pCopy.Type == PanelTypeNative {
+											pCopy.Type = PanelTypeHTML
+											if strings.TrimSpace(pCopy.HTML) == "" {
+												pCopy.HTML = synthesizeHTMLForPanel(pCopy)
+											}
+										} else {
+											pCopy.Type = PanelTypeNative
+										}
+										a.persistPanelToggle(pCopy, fmt.Sprintf("'%s' auf %s umgestellt", pCopy.Title, strings.ToUpper(string(pCopy.Type))))
+									}
+
+									ui.Spacer(c)
+
+									if len(a.panels) > 1 {
+										if ui.Button(c.Key("ov-del-"+pCopy.ID), "🗑 Löschen").Clicked() {
+											_ = DeletePanel(a.Config.PanelsDir, pCopy.ID)
+											var next []*PanelSpec
+											for _, item := range a.panels {
+												if item.ID != pCopy.ID {
+													next = append(next, item)
+												}
+											}
+											a.panels = next
+											if a.selectedPanelID == pCopy.ID && len(a.panels) > 0 {
+												a.selectPanel(a.panels[0].ID)
+											}
+											a.syncAllPanelRuntimes()
+											a.toast("Panel '" + pCopy.Title + "' gelöscht")
+										}
+									}
+								})
+							})
+						}
+					})
+				})
+			})
+
+			// Right Column: Live Interactive Preview of Selected Panel + Direct Switch
+			sel := a.findPanel(a.selectedPanelID)
+			ui.Column(c).Width(420).FillHeight().Padding(12).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Text(c, "LIVE-VORSCHAU").FontSize(11).Bold().TextColor(t.Accent)
+					ui.Spacer(c)
+					if sel != nil {
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "Aktiv:").FontSize(11).TextColor(t.TextMuted)
+							if ui.Switch(c.Key("prev-sw-tray-"+sel.ID), &sel.Enabled).Changed() {
+								a.persistPanelToggle(sel, fmt.Sprintf("Panel '%s' umgeschaltet", sel.Title))
+							}
+						})
+						if sel.Enabled {
+							if ui.Button(c.Key("prev-pop-open"), "Popover ↗").Tooltip("Öffnet das echte Menüleisten-Popover").Clicked() {
+								a.togglePanelFlyout(sel.ID)
+							}
+						}
+					}
+				})
+				ui.Divider(c)
+
+				if sel == nil {
+					ui.Text(c, "Wähle links ein Panel aus, um die Live-Vorschau zu sehen.").TextColor(t.TextMuted)
+				} else {
+					rt := a.runtimes[sel.ID]
+					a.renderNativePanelPopover(c, sel, rt)
+				}
+			})
+		})
+	})
+}
+
+func (a *App) renderTabStore(c *ui.Context) {
+	t := c.Theme()
+
+	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					ui.Text(c, "🏪 Vorlagen-Store — Fertige Panels & Widgets mit 1-Klick-Schalter").FontSize(16).Bold()
+					ui.Text(c, "Schalte fertige Vorlagen aus 5 Kategorien direkt per Switch ein oder nutze sie als Startpunkt für das KI-Studio.").
+						FontSize(12).TextColor(t.TextMuted)
+				})
+				if ui.Button(c.Key("store-to-ov"), "← Zurück zur Übersicht").Clicked() {
+					a.activeTab = TabOverview
+				}
+			})
+
+			a.renderStoreCatalogList(c, "tab")
+		})
+	})
+}
+
+// renderHelpOnboardingModal renders the Help View explaining OmaMac and 0-Token Polling.
 func (a *App) renderHelpOnboardingModal(c *ui.Context) {
 	t := c.Theme()
 
@@ -606,24 +971,24 @@ func (a *App) renderHelpOnboardingModal(c *ui.Context) {
 			// Hero Banner
 			ui.Column(c).FillWidth().Padding(18).Radius(10).Border(1, t.Accent.Alpha(0.5)).Background(t.Surface).Gap(8).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-					pillBadge(c, "WILLKOMMEN BEI OMAMAC", t.Accent.Alpha(0.22), t.Accent)
-					pillBadge(c, "⚡ 0 AI TOKENS IM LAUFENDEN BETRIEB", t.Success.Alpha(0.22), t.Success)
+					pillBadge(c, "KURZANLEITUNG", t.Accent.Alpha(0.22), t.Accent)
+					pillBadge(c, "⚡ 0 KI-TOKENS IM LAUFENDEN BETRIEB", t.Success.Alpha(0.22), t.Success)
 					ui.Spacer(c)
-					if ui.PrimaryButton(c.Key("help-close-top"), "✓ Verstanden – Zum Studio").Clicked() {
+					if ui.PrimaryButton(c.Key("help-close-top"), "✓ Zurück zur Übersicht").Clicked() {
 						a.closeHelpModal()
 					}
 				})
-				ui.Text(c, "Wie OmaMac funktioniert: KI-Power beim Bauen, 0 Tokens beim Live-Polling").FontSize(18).Bold()
-				ui.Text(c, "OmaMac bringt das Omarchy-Prinzip (Wal-Panel Launcher + maßgeschneiderte Menubar- & Desktop-Status-Panels) nativ auf macOS.").
+				ui.Text(c, "Wie OmaMac funktioniert: Einfache Schalter im Alltag, KI-Hilfe beim Bauen").FontSize(18).Bold()
+				ui.Text(c, "OmaMac bringt Status-Panels für die macOS-Menüleiste, schwebende Desktop-Widgets und einen Schnellstart-Launcher (Alt+Space) zusammen.").
 					FontSize(12.5).TextColor(t.TextMuted)
 			})
 
 			// Highlight Box: Why 0 Tokens during polling?
 			ui.Column(c).FillWidth().Padding(16).Radius(10).Border(1, t.Success.Alpha(0.5)).Background(t.Success.Alpha(0.08)).Gap(8).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "💡 Wichtigstes Prinzip: KI nur beim Erstellen/Anpassen — 0 Tokens beim Polling!").FontSize(14).Bold().TextColor(t.Success)
+					ui.Text(c, "💡 Wichtigstes Prinzip: KI nur beim Erstellen/Anpassen — 0 Tokens beim Live-Polling!").FontSize(14).Bold().TextColor(t.Success)
 				})
-				ui.Text(c, "• Wann wird die KI (Gemini / Claude) genutzt?\n  NUR wenn du aktiv im Studio oder Wal-Panel auf 'Run Prompt #1 (Create)' oder 'Run Prompt #2 (Refine)' klickst. Die KI schreibt dann einmalig die Panel-Definition (JSON/HTML) und das lokale Abfrage-Skript (Shell/Python/curl).\n\n• Was passiert danach im Dauerbetrieb (Polling alle 15s–180s)?\n  Das fertige Panel führt im Hintergrund lokal dein generiertes Shell-/Python-Skript aus (z. B. mydealz RSS/Web-Abfrage, Idealo Preis-Check, System-Load, Git-Status, Jira-API). Dabei wird KEINE KI aufgerufen und es werden 0,00 Tokens verbraucht!").
+				ui.Text(c, "• Wann wird die KI (Gemini / Claude) genutzt?\n  NUR wenn du aktiv im KI-Studio auf „Neues Panel erstellen“ oder „Panel anpassen“ klickst. Die KI erstellt dann einmalig das Panel und das Abfrage-Skript.\n\n• Was passiert danach im Dauerbetrieb (Polling alle 15s–180s)?\n  Eingeschaltete Panels führen im Hintergrund lokal ihr Shell-/Python-Skript aus (z. B. mydealz Deals, System-Load, Git-Status). Dabei werden 0,00 KI-Tokens verbraucht!").
 					FontSize(12)
 			})
 
@@ -635,24 +1000,24 @@ func (a *App) renderHelpOnboardingModal(c *ui.Context) {
 					desc  string
 				}{
 					{
-						"1 • 2-PROMPT STUDIO",
-						"Mit 2 Prompts zum Live-Panel",
-						"Prompt #1 erzeugt 1 bis 4 Panels gleichzeitig (z. B. mydealz 3D-Drucker Deals oder Docker-Monitor). Prompt #2 passt Schwellenwerte, Farben, Badges oder Action-Buttons live per Hot-Reload an.",
+						"1 • ÜBERSICHT & SCHALTER",
+						"Einfach An- und Ausschalten",
+						"In der Übersicht siehst du alle vorhandenen Panels. Mit dem Schalter „Menüleiste“ legst du fest, welche Panels oben rechts in macOS angezeigt werden.",
 					},
 					{
-						"2 • BEIDE PANEL-TYPEN",
-						"Native GPU (mygo/ui) & HTML Glass",
-						"Du kannst jedes Panel entweder als blitzschnelles GPU-gerendertes mygo/ui Panel (KPIs, Balken, Tabellen, Buttons) oder als freies HTML/CSS/JS WebView-Glas-Popover betreiben und jederzeit umschalten.",
+						"2 • KI-STUDIO (2 SCHRITTE)",
+						"Erstellen & Verfeinern",
+						"Schritt 1 erzeugt aus einem Satz ein neues Panel (z. B. mydealz 3D-Drucker Deals). Schritt 2 passt Farben, Schwellenwerte oder Buttons live an.",
 					},
 					{
-						"3 • ZERO-LEAK VAULT",
-						"Zentrale Credentials im macOS Keychain",
-						"API-Keys & Filter ($MYDEALZ_KEYWORD, $IDEALO_TARGET_PRICE, $JIRA_TOKEN) liegen im macOS Keychain. Die KI sieht beim Generieren nur den Variablennamen ($VAR), niemals das Passwort!",
+						"3 • SICHERER TRESOR",
+						"Zentrale Variablen im macOS Keychain",
+						"Suchbegriffe & API-Tokens ($MYDEALZ_KEYWORD, $IDEALO_TARGET_PRICE) liegen im macOS Keychain. Die KI sieht nur den Variablennamen ($VAR), nie das Geheimnis.",
 					},
 					{
-						"4 • WAL-PANEL & TILING",
-						"Globaler Shortcut (Alt+Space)",
-						"Drücke jederzeit Option+Space für das schwebende Wal-Panel: Apps aus /Applications starten, Fenster wie in Omarchy tilen (Left/Right 50%, Center 80%, Maximize) oder Panels nachprompten.",
+						"4 • SCHNELLSTART (ALT+SPACE)",
+						"Wal-Panel jederzeit öffnen",
+						"Drücke Option+Space für das schwebende Schnellstart-Fenster: Panels per Switch umschalten, Fenster anordnen oder Programme starten.",
 					},
 				}
 				for idx, cd := range cards {
@@ -664,109 +1029,43 @@ func (a *App) renderHelpOnboardingModal(c *ui.Context) {
 					})
 				}
 			})
-
-			// Bottom Action Bar with "Don't show automatically on startup" switch
-			ui.Row(c).FillWidth().Padding(12, 16).Radius(8).Border(1, t.Border).Background(t.Surface).AlignItems(ui.Center).Gap(12).Children(func() {
-				ui.Switch(c.Key("help-dont-show"), &a.dontShowHelpAgain)
-				ui.Text(c, "Diesen Dialog beim nächsten App-Start nicht mehr automatisch einblenden (jederzeit über '❓ Hilfe & 0-Token Prinzip' oben rechts aufrufbar)").
-					FontSize(12).TextColor(t.TextMuted).Grow(1)
-				if ui.PrimaryButton(c.Key("help-close-bottom"), "🚀 Jetzt starten").Clicked() {
-					a.closeHelpModal()
-				}
-			})
 		})
 	})
 }
 
 func (a *App) closeHelpModal() {
 	a.showHelpModal = false
-	a.Config.OnboardingDismissed = a.dontShowHelpAgain
+	a.Config.OnboardingDismissed = true
 	_ = SaveConfig(a.ConfigPath, a.Config)
-}
-
-func (a *App) renderStudioSidebar(c *ui.Context) {
-	t := c.Theme()
-	vaultCnt := 0
-	if a.Vault != nil {
-		vaultCnt = len(a.Vault.Entries)
-	}
-	navItems := []struct {
-		tab   StudioTab
-		label string
-		badge string
-	}{
-		{TabPromptStudio, "✨ 2-Prompt Panel Studio", "AI"},
-		{TabPanelsManager, "📊 Active Panels Manager", fmt.Sprintf("%d", len(a.panels))},
-		{TabWindowManager, "🪟 Window Tiling & Apps", fmt.Sprintf("%d", len(a.apps))},
-		{TabSettings, "🔐 AI & Credentials Vault", fmt.Sprintf("%d vars", vaultCnt)},
-	}
-
-	ui.Column(c).Width(235).FillHeight().Padding(12, 10).Gap(6).Background(t.Surface).Children(func() {
-		ui.Text(c, "OMAMAC MODULES").FontSize(10).Bold().TextColor(t.TextMuted).Padding(4, 8)
-		for _, item := range navItems {
-			it := item
-			active := a.activeTab == it.tab
-			btn := ui.ButtonBase(c.Key(fmt.Sprintf("side-%d", it.tab))).
-				FillWidth().Padding(9, 10).Radius(6).Cursor(ui.CursorPointer)
-			fg := t.Text
-			if active {
-				btn.Background(t.Accent.Alpha(0.16))
-				fg = t.Accent
-			} else if btn.Hovered() {
-				btn.Background(t.SurfaceHover)
-			}
-			btn.Children(func() {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, it.label).FontSize(12.5).Bold().TextColor(fg).Grow(1).SingleLine()
-					pillBadge(c, it.badge, t.Border.Alpha(0.6), t.TextMuted)
-				})
-			})
-			if btn.Clicked() {
-				a.activeTab = it.tab
-				if it.tab == TabSettings {
-					a.AgyStatus = InspectAntigravityAuth(a.Config)
-				}
-			}
-		}
-
-		ui.Spacer(c)
-
-		ui.Column(c).FillWidth().Padding(10).Radius(8).Border(1, t.Border).Gap(4).Children(func() {
-			ui.Text(c, "2-Prompt + Vault Workflow").FontSize(11).Bold().TextColor(t.Accent)
-			ui.Text(c, "1. Store tokens/vars in Vault ($MYDEALZ_KEYWORD, $JIRA_TOKEN)\n2. Prompt #1 creates 1..N panels\n3. Prompt #2 refines live").
-				FontSize(10.5).TextColor(t.TextMuted)
-		})
-	})
 }
 
 func (a *App) renderTabPromptStudio(c *ui.Context) {
 	t := c.Theme()
 
 	ui.Row(c).Grow(1).FillWidth().Padding(16).Gap(16).Children(func() {
-		// Left Column: Prompt #1 (Multi-Create) + Prompt #2 (Refine)
+		// Left Column: Step 1 (Create) + Step 2 (Refine)
 		ui.Scroll(c).Grow(1).FillHeight().Children(func() {
 			ui.Column(c).FillWidth().Gap(14).Children(func() {
 				// Card 1: Prompt #1
 				ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(10).Children(func() {
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						pillBadge(c, "STEP 1 • PROMPT #1", t.Accent.Alpha(0.2), t.Accent)
-						ui.Text(c, "Generate One or Multiple Status Panels").FontSize(14).Bold()
+						pillBadge(c, "SCHRITT 1 • NEU ERSTELLEN", t.Accent.Alpha(0.2), t.Accent)
+						ui.Text(c, "Neues Status-Panel mit KI generieren").FontSize(14).Bold()
 					})
-					ui.Text(c, "Choose whether to generate GPU-rendered Native mygo/ui panels, HTML/CSS/JS WebView panels, or both side-by-side. Vault variables ($VAR) are automatically available to the AI.").
+					ui.Text(c, "Beschreibe in einem Satz, was überwacht oder angezeigt werden soll. Variablen aus dem Tresor ($MYDEALZ_KEYWORD, $IDEALO_TARGET_PRICE) werden automatisch eingebunden.").
 						FontSize(11.5).TextColor(t.TextMuted)
 
 					ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "Panel Type:").FontSize(12).Bold()
-						ui.Segmented(c.Key("st-p1-type"), &a.prompt1TypeIdx, "Native (mygo/ui)", "HTML (WebView)", "Both Types")
-					})
-					ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "Panel Count:").FontSize(12).Bold()
+						ui.Text(c, "Darstellung:").FontSize(12).Bold()
+						ui.Segmented(c.Key("st-p1-type"), &a.prompt1TypeIdx, "Standard (Schnell / Native)", "Web-Design (HTML/CSS)", "Beide Varianten")
+						ui.Spacer(c)
+						ui.Text(c, "Anzahl:").FontSize(12).Bold()
 						ui.Segmented(c.Key("st-p1-cnt"), &a.prompt1CountIdx, panelCountLabels...)
 					})
 
 					ui.TextArea(c.Key("st-p1-area"), &a.prompt1Text).
-						Placeholder("Prompt #1: e.g. Create a panel listing current 3D printer deals from mydealz and monitoring Idealo target price ($IDEALO_TARGET_PRICE)...").
-						Height(76).FillWidth()
+						Placeholder("Beispiel: Erstelle ein Status-Panel für aktuelle 3D-Drucker Deals auf mydealz und überwache den Idealo-Zielpreis ($IDEALO_TARGET_PRICE)...").
+						Height(74).FillWidth()
 
 					// Preset Quick-Prompts
 					ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
@@ -774,9 +1073,9 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 							label  string
 							prompt string
 						}{
-							{"🖨️ + mydealz 3D-Drucker & Idealo", "Create a status panel listing current 3D-Drucker deals from mydealz.de/gruppe/3d-drucker and monitoring Idealo target price using $MYDEALZ_KEYWORD and $IDEALO_TARGET_PRICE"},
-							{"🐳 + Docker & K8s", "Create a Docker & Kubernetes container health status panel with running container count and restart action"},
-							{"⚡ + Dual: Battery + CPU", "Create 2 panels: Battery health & charging wattage; CPU thermal & memory pressure"},
+							{"🖨️ Beispiel: mydealz 3D-Drucker & Idealo", "Create a status panel listing current 3D-Drucker deals from mydealz.de/gruppe/3d-drucker and monitoring Idealo target price using $MYDEALZ_KEYWORD and $IDEALO_TARGET_PRICE"},
+							{"🐳 Beispiel: Docker & Container", "Create a Docker & Kubernetes container health status panel with running container count and restart action"},
+							{"⚡ Beispiel: Akku & CPU-Last", "Create 2 panels: Battery health & charging wattage; CPU thermal & memory pressure"},
 						}
 						for idx, pr := range presets {
 							prCopy := pr
@@ -785,7 +1084,7 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 							}
 						}
 						ui.Spacer(c)
-						if ui.PrimaryButton(c.Key("st-p1-submit"), "✨ Run Prompt #1 (Create Panels)").
+						if ui.PrimaryButton(c.Key("st-p1-submit"), "✨ Neues Panel erstellen").
 							Disabled(a.busy || strings.TrimSpace(a.prompt1Text) == "").Clicked() {
 							a.triggerPrompt1Create()
 						}
@@ -796,15 +1095,15 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 				sel := a.findPanel(a.selectedPanelID)
 				ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(10).Children(func() {
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						pillBadge(c, "STEP 2 • PROMPT #2", t.Success.Alpha(0.2), t.Success)
-						ui.Text(c, "Refine & Iterate Selected Status Panel").FontSize(14).Bold()
+						pillBadge(c, "SCHRITT 2 • ANPASSEN", t.Success.Alpha(0.2), t.Success)
+						ui.Text(c, "Bestehendes Panel per Satz verfeinern").FontSize(14).Bold()
 					})
 
-					// Select which panel to refine
+					ui.Text(c, "1. Welches Panel möchtest du anpassen?").FontSize(11.5).Bold().TextColor(t.TextMuted)
 					ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
 						for _, p := range a.panels {
 							pCopy := p
-							lbl := fmt.Sprintf("%s %s (%s)", pCopy.Icon, pCopy.Title, strings.ToUpper(string(pCopy.Type)))
+							lbl := fmt.Sprintf("%s %s", pCopy.Icon, pCopy.Title)
 							if a.selectedPanelID == pCopy.ID {
 								if ui.PrimaryButton(c.Key("st-sel-"+pCopy.ID), lbl).Clicked() {
 									a.selectPanel(pCopy.ID)
@@ -818,16 +1117,16 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 					})
 
 					ui.TextArea(c.Key("st-p2-area"), &a.prompt2Text).
-						Placeholder("Prompt #2: e.g. Highlight Bambu Lab deals in green, alert red when price < $IDEALO_TARGET_PRICE, or convert to HTML chart...").
-						Height(72).FillWidth()
+						Placeholder("Beispiel: Hebe Bambu Lab Deals grün hervor, färbe den Status bei Warnung rot oder füge einen Button hinzu...").
+						Height(70).FillWidth()
 
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 						if sel != nil {
-							ui.Text(c, fmt.Sprintf("Target: %s (%d prompt steps so far)", sel.Title, len(sel.PromptHistory))).
+							ui.Text(c, fmt.Sprintf("Ausgewählt: %s (%d KI-Schritte bisher)", sel.Title, len(sel.PromptHistory))).
 								FontSize(11.5).TextColor(t.TextMuted)
 						}
 						ui.Spacer(c)
-						if ui.PrimaryButton(c.Key("st-p2-submit"), "⚡ Run Prompt #2 (Refine & Hot-Reload)").
+						if ui.PrimaryButton(c.Key("st-p2-submit"), "⚡ Änderung anwenden & neu laden").
 							Disabled(a.busy || sel == nil || strings.TrimSpace(a.prompt2Text) == "").Clicked() {
 							a.triggerPrompt2Refine(sel.ID, a.prompt2Text)
 						}
@@ -836,10 +1135,10 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 					// Prompt History Timeline
 					if sel != nil && len(sel.PromptHistory) > 0 {
 						ui.Divider(c)
-						ui.Text(c, "PROMPT HISTORY FOR THIS PANEL").FontSize(10.5).Bold().TextColor(t.TextMuted)
+						ui.Text(c, "BISHERIGE KI-SCHRITTE FÜR DIESES PANEL").FontSize(10.5).Bold().TextColor(t.TextMuted)
 						for _, ph := range sel.PromptHistory {
 							ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-								pillBadge(c, fmt.Sprintf("Prompt #%d", ph.Step), t.Accent.Alpha(0.15), t.Accent)
+								pillBadge(c, fmt.Sprintf("Schritt #%d", ph.Step), t.Accent.Alpha(0.15), t.Accent)
 								ui.Text(c, ph.Prompt).FontSize(11.5).Grow(1).SingleLine()
 								ui.Text(c, ph.Timestamp).FontSize(10.5).TextColor(t.TextMuted)
 							})
@@ -851,13 +1150,18 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 
 		// Right Column: Live Interactive Preview of Selected Panel
 		sel := a.findPanel(a.selectedPanelID)
-		ui.Column(c).Width(430).FillHeight().Padding(12).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+		ui.Column(c).Width(420).FillHeight().Padding(12).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "LIVE PANEL PREVIEW").FontSize(11).Bold().TextColor(t.Accent)
+				ui.Text(c, "LIVE-VORSCHAU").FontSize(11).Bold().TextColor(t.Accent)
 				ui.Spacer(c)
 				if sel != nil {
-					pillBadge(c, "TYPE: "+strings.ToUpper(string(sel.Type)), t.Accent.Alpha(0.18), t.Accent)
-					if ui.Button(c.Key("prev-pop-open"), "Open Popover ↗").Clicked() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Menüleiste:").FontSize(11).TextColor(t.TextMuted)
+						if ui.Switch(c.Key("st-prev-sw-"+sel.ID), &sel.Enabled).Changed() {
+							a.persistPanelToggle(sel, fmt.Sprintf("Panel '%s' umgeschaltet", sel.Title))
+						}
+					})
+					if ui.Button(c.Key("st-prev-pop-open"), "Popover ↗").Clicked() {
 						a.togglePanelFlyout(sel.ID)
 					}
 				}
@@ -865,7 +1169,7 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 			ui.Divider(c)
 
 			if sel == nil {
-				ui.Text(c, "Select or create a panel to preview it live.").TextColor(t.TextMuted)
+				ui.Text(c, "Wähle ein Panel aus, um die Vorschau zu sehen.").TextColor(t.TextMuted)
 			} else {
 				rt := a.runtimes[sel.ID]
 				a.renderNativePanelPopover(c, sel, rt)
@@ -874,106 +1178,11 @@ func (a *App) renderTabPromptStudio(c *ui.Context) {
 	})
 }
 
-func (a *App) renderTabPanelsManager(c *ui.Context) {
-	t := c.Theme()
-
-	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Padding(16).Gap(14).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					ui.Text(c, "Multi-Panel Status Bar & Floating Desktop Manager").FontSize(16).Bold()
-					ui.Text(c, "Enable/disable macOS Menubar Trays, pin panels as floating desktop HUDs, or switch any panel between Native (mygo/ui) and HTML (WebView).").
-						FontSize(12).TextColor(t.TextMuted)
-				})
-			})
-
-			for _, p := range a.panels {
-				pCopy := p
-				sBg, sFg := statusColors(t, pCopy.Status)
-				ui.Column(c.Key("mgr-card-"+pCopy.ID)).FillWidth().Padding(14).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-						ui.Text(c, pCopy.Icon+" "+pCopy.Title).FontSize(14).Bold()
-						pillBadge(c, "TYPE: "+strings.ToUpper(string(pCopy.Type)), t.Accent.Alpha(0.16), t.Accent)
-						pillBadge(c, pCopy.TrayLabel(), sBg, sFg)
-						ui.Spacer(c)
-
-						trayLbl := "Menubar Tray: OFF"
-						if pCopy.Enabled {
-							trayLbl = "✅ Menubar Tray: ON"
-						}
-						if ui.Button(c.Key("tog-tray-"+pCopy.ID), trayLbl).Clicked() {
-							pCopy.Enabled = !pCopy.Enabled
-							_ = SavePanel(a.Config.PanelsDir, pCopy)
-							a.syncAllPanelRuntimes()
-						}
-
-						floatLbl := "Pin Desktop HUD: OFF"
-						if pCopy.PinnedFloating {
-							floatLbl = "📌 Pinned Desktop HUD: ON"
-						}
-						if ui.Button(c.Key("tog-float-"+pCopy.ID), floatLbl).Clicked() {
-							pCopy.PinnedFloating = !pCopy.PinnedFloating
-							_ = SavePanel(a.Config.PanelsDir, pCopy)
-							a.syncAllPanelRuntimes()
-						}
-
-						switchTypeLbl := "Switch to HTML"
-						if pCopy.Type == PanelTypeHTML {
-							switchTypeLbl = "Switch to Native UI"
-						}
-						if ui.Button(c.Key("tog-type-"+pCopy.ID), switchTypeLbl).Clicked() {
-							if pCopy.Type == PanelTypeNative {
-								pCopy.Type = PanelTypeHTML
-								if strings.TrimSpace(pCopy.HTML) == "" {
-									pCopy.HTML = synthesizeHTMLForPanel(pCopy)
-								}
-							} else {
-								pCopy.Type = PanelTypeNative
-							}
-							_ = SavePanel(a.Config.PanelsDir, pCopy)
-							a.syncAllPanelRuntimes()
-						}
-
-						if ui.Button(c.Key("dup-"+pCopy.ID), "Duplicate").Clicked() {
-							clone := *pCopy
-							clone.ID = fmt.Sprintf("%s-copy-%d", pCopy.ID, time.Now().Unix()%1000)
-							clone.Title = pCopy.Title + " (Copy)"
-							_ = SavePanel(a.Config.PanelsDir, &clone)
-							a.panels = append(a.panels, &clone)
-							a.syncAllPanelRuntimes()
-						}
-
-						if len(a.panels) > 1 {
-							if ui.Button(c.Key("del-"+pCopy.ID), "Delete").Clicked() {
-								_ = DeletePanel(a.Config.PanelsDir, pCopy.ID)
-								var next []*PanelSpec
-								for _, item := range a.panels {
-									if item.ID != pCopy.ID {
-										next = append(next, item)
-									}
-								}
-								a.panels = next
-								if a.selectedPanelID == pCopy.ID && len(a.panels) > 0 {
-									a.selectPanel(a.panels[0].ID)
-								}
-								a.syncAllPanelRuntimes()
-							}
-						}
-					})
-
-					ui.Text(c, fmt.Sprintf("ID: %s  •  Refresh: %ds  •  Command: %s", pCopy.ID, pCopy.RefreshSeconds, truncateStr(pCopy.Command, 90))).
-						FontSize(11).TextColor(t.TextMuted).SingleLine()
-				})
-			}
-		})
-	})
-}
-
 func (a *App) renderTabWindowManager(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Grow(1).FillWidth().Padding(16).Gap(12).Children(func() {
-		ui.Text(c, "Omarchy-Style macOS Window Tiling & App Launcher").FontSize(16).Bold()
-		ui.Text(c, "Use the Wal-Panel ("+a.Config.LauncherShortcut+") or trigger window tiling presets directly below.").
+		ui.Text(c, "🪟 macOS Fenster-Tiling & Programm-Starter").FontSize(16).Bold()
+		ui.Text(c, "Ordne das aktive Fenster per Klick an oder nutze jederzeit den globalen Shortcut ("+a.Config.LauncherShortcut+").").
 			FontSize(12).TextColor(t.TextMuted)
 		a.renderWalLauncherMode(c)
 	})
@@ -987,15 +1196,15 @@ func (a *App) renderTabSettings(c *ui.Context) {
 			// Header + Save / Test Bar
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					ui.Text(c, "AI Providers (Gemini Antigravity / Claude) & Central Credentials Vault").FontSize(16).Bold()
-					ui.Text(c, "Configure AI engines and central macOS Keychain credentials ($VAR_NAME) shared safely with generated status panels.").
+					ui.Text(c, "🔐 KI-Anbieter (Gemini / Claude) & Zentraler Keychain-Tresor").FontSize(16).Bold()
+					ui.Text(c, "Konfiguriere deine KI-Verbindung und speichere Suchbegriffe oder API-Tokens sicher im macOS-Schlüsselbund ($VAR_NAME).").
 						FontSize(12).TextColor(t.TextMuted)
 				})
 
-				if ui.Button(c.Key("cfg-test-ai"), "🔌 Test Active AI Connection").Disabled(a.busy).Clicked() {
+				if ui.Button(c.Key("cfg-test-ai"), "🔌 KI-Verbindung testen").Disabled(a.busy).Clicked() {
 					a.saveSettingsFromDraft()
 					a.busy = true
-					a.busyLabel = "Testing AI connection (" + a.AI.ActiveProviderSummary() + ")..."
+					a.busyLabel = "Teste KI-Verbindung (" + a.AI.ActiveProviderSummary() + ")..."
 					go func() {
 						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 						defer cancel()
@@ -1004,7 +1213,7 @@ func (a *App) renderTabSettings(c *ui.Context) {
 							a.busy = false
 							if err != nil {
 								a.statusErr = true
-								a.statusMsg = "AI Connection Test failed: " + err.Error()
+								a.statusMsg = "KI-Verbindungstest fehlgeschlagen: " + err.Error()
 								a.toast(a.statusMsg)
 							} else {
 								a.statusErr = false
@@ -1015,19 +1224,19 @@ func (a *App) renderTabSettings(c *ui.Context) {
 					}()
 				}
 
-				if ui.PrimaryButton(c.Key("cfg-save-btn"), "💾 Save Settings").Disabled(a.busy).Clicked() {
+				if ui.PrimaryButton(c.Key("cfg-save-btn"), "💾 Einstellungen speichern").Disabled(a.busy).Clicked() {
 					a.saveSettingsFromDraft()
-					a.toast("Settings saved to " + a.ConfigPath)
+					a.toast("Einstellungen gespeichert")
 				}
 			})
 
 			// Card 0: Central Credentials & Secrets Vault (macOS Keychain via mygo.Secrets)
 			ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(10).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "🔐 Central Panel & Agent Credentials Vault (macOS Keychain)").FontSize(14).Bold().Grow(1)
-					pillBadge(c, "ZERO-LEAK AI PROMPT INJECTION", t.Success.Alpha(0.18), t.Success)
+					ui.Text(c, "🔐 Zentraler Variablen- & Passwort-Tresor (macOS Keychain)").FontSize(14).Bold().Grow(1)
+					pillBadge(c, "ZERO-LEAK SCHUTZ", t.Success.Alpha(0.18), t.Success)
 				})
-				ui.Text(c, "Secrets stored here are saved in macOS Keychain (mygo.Secrets). The AI agent only sees variable names & descriptions (never values!), and panels receive them automatically as $ENV_VAR at runtime.").
+				ui.Text(c, "Werte werden im macOS Keychain gespeichert. Die KI sieht beim Generieren nur den Variablennamen (z. B. $MYDEALZ_KEYWORD), niemals den geheimen Wert.").
 					FontSize(11.5).TextColor(t.TextMuted)
 
 				if a.Vault != nil && len(a.Vault.Entries) > 0 {
@@ -1037,9 +1246,9 @@ func (a *App) renderTabSettings(c *ui.Context) {
 							pillBadge(c, "$"+eCopy.Name, t.Accent.Alpha(0.18), t.Accent)
 							ui.Text(c, eCopy.Description).FontSize(11.5).Grow(1).SingleLine()
 							ui.Text(c, "••••••••").FontSize(11.5).TextColor(t.TextMuted)
-							if ui.Button(c.Key("vault-del-"+eCopy.Name), "Remove").Clicked() {
+							if ui.Button(c.Key("vault-del-"+eCopy.Name), "Entfernen").Clicked() {
 								_ = a.Vault.Delete(eCopy.Name)
-								a.toast("Removed $" + eCopy.Name + " from Vault")
+								a.toast("$" + eCopy.Name + " aus Tresor entfernt")
 							}
 						})
 					}
@@ -1047,16 +1256,16 @@ func (a *App) renderTabSettings(c *ui.Context) {
 
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.TextInput(c.Key("vault-new-key"), &a.vaultNewKey).
-						Placeholder("ENV_VAR_NAME (e.g. JIRA_TOKEN, MYDEALZ_KEYWORD)").Width(230)
+						Placeholder("VARIABLEN_NAME (z. B. MYDEALZ_KEYWORD)").Width(240)
 					ui.TextInput(c.Key("vault-new-val"), &a.vaultNewVal).
-						Placeholder("Secret Value / API Token / Filter").Width(210)
+						Placeholder("Wert / API-Token / Filter").Width(210)
 					ui.TextInput(c.Key("vault-new-desc"), &a.vaultNewDesc).
-						Placeholder("Description for AI Agent (e.g. Atlassian Cloud API token)").Grow(1)
-					if ui.PrimaryButton(c.Key("vault-add-btn"), "+ Save to Vault").
+						Placeholder("Kurzbeschreibung für die KI (z. B. Suchbegriff für 3D-Drucker)").Grow(1)
+					if ui.PrimaryButton(c.Key("vault-add-btn"), "+ Im Tresor speichern").
 						Disabled(strings.TrimSpace(a.vaultNewKey) == "" || strings.TrimSpace(a.vaultNewVal) == "").Clicked() {
 						if a.Vault != nil {
 							_ = a.Vault.Set(a.vaultNewKey, a.vaultNewVal, a.vaultNewDesc)
-							a.toast("Saved $" + NormalizeEnvVarName(a.vaultNewKey) + " to macOS Keychain Vault")
+							a.toast("$" + NormalizeEnvVarName(a.vaultNewKey) + " im macOS Keychain gespeichert")
 							a.vaultNewKey, a.vaultNewVal, a.vaultNewDesc = "", "", ""
 						}
 					}
@@ -1065,67 +1274,67 @@ func (a *App) renderTabSettings(c *ui.Context) {
 
 			// Card 1: Active AI Engine Selector
 			ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(10).Children(func() {
-				ui.Text(c, "1. Primary AI Provider for Status Panel Generation & Refinement").FontSize(14).Bold()
-				ui.Segmented(c.Key("cfg-active-prov"), &a.providerIdx, "Google Gemini (Antigravity Login or API Key)", "Anthropic Claude (API Key, Antigravity or CLI)")
+				ui.Text(c, "1. Aktiver KI-Anbieter für Panel-Erstellung & Anpassung").FontSize(14).Bold()
+				ui.Segmented(c.Key("cfg-active-prov"), &a.providerIdx, "Google Gemini (Antigravity Login oder API-Key)", "Anthropic Claude (API-Key, Antigravity oder CLI)")
 			})
 
 			// Card 2: Gemini Configuration (Antigravity OAuth Login + API Key Fallback)
 			ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(12).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "2. Google Gemini Integration (Antigravity Login or API Key)").FontSize(14).Bold().Grow(1)
+					ui.Text(c, "2. Google Gemini (Antigravity Login oder API-Key)").FontSize(14).Bold().Grow(1)
 					if a.AgyStatus.Available {
-						pillBadge(c, "✅ ANTIGRAVITY OAUTH CONNECTED", t.Success.Alpha(0.18), t.Success)
+						pillBadge(c, "✅ ANTIGRAVITY OAUTH VERBUNDEN", t.Success.Alpha(0.18), t.Success)
 					} else {
-						pillBadge(c, "⚠ ANTIGRAVITY NOT DETECTED", t.Warning.Alpha(0.18), t.Warning)
+						pillBadge(c, "⚠ ANTIGRAVITY NICHT ERKANNT", t.Warning.Alpha(0.18), t.Warning)
 					}
 				})
 
 				ui.Text(c, a.AgyStatus.StatusSummary).FontSize(11.5).TextColor(t.TextMuted)
 
 				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Gemini Auth Mode:").FontSize(12).Bold()
-					ui.Segmented(c.Key("cfg-gem-auth"), &a.geminiAuthIdx, "Antigravity Login (Recommended)", "Direct Gemini API Key")
+					ui.Text(c, "Anmeldung:").FontSize(12).Bold()
+					ui.Segmented(c.Key("cfg-gem-auth"), &a.geminiAuthIdx, "Antigravity Login (Empfohlen)", "Direkter Gemini API-Key")
 					ui.Spacer(c)
-					if ui.Button(c.Key("cfg-agy-reauth"), "🔑 Antigravity Login / Refresh (agy)").Clicked() {
+					if ui.Button(c.Key("cfg-agy-reauth"), "🔑 Antigravity Login öffnen (agy)").Clicked() {
 						_ = TriggerAntigravityLogin(a.Config)
-						a.toast("Launched Antigravity login in macOS Terminal")
+						a.toast("Antigravity Login im macOS Terminal gestartet")
 					}
-					if ui.Button(c.Key("cfg-agy-check"), "↻ Re-Check Token").Clicked() {
+					if ui.Button(c.Key("cfg-agy-check"), "↻ Status prüfen").Clicked() {
 						a.AgyStatus = InspectAntigravityAuth(a.Config)
 						a.toast(a.AgyStatus.StatusSummary)
 					}
 				})
 
 				ui.Form(c, func() {
-					ui.Field(c, "Gemini Model", func() {
+					ui.Field(c, "Gemini Modell", func() {
 						ui.Select(c.Key("cfg-gem-model"), &a.geminiModel, geminiModelList).Width(320)
 					})
-					ui.Field(c, "Gemini API Key (Fallback / Direct Mode)", func() {
+					ui.Field(c, "Gemini API-Key (Optionaler Fallback)", func() {
 						ui.TextInput(c.Key("cfg-gem-key"), &a.geminiKey).
-							Placeholder("AIzaSy... (optional when Antigravity Login is active)").
+							Placeholder("AIzaSy... (optional wenn Antigravity Login aktiv ist)").
 							FillWidth()
 					})
 				})
 			})
 
-			// Card 3: Claude Integration (Anthropic API Key, Antigravity Claude, or Claude CLI)
+			// Card 3: Claude Integration
 			ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(12).Children(func() {
-				ui.Text(c, "3. Anthropic Claude Integration").FontSize(14).Bold()
+				ui.Text(c, "3. Anthropic Claude").FontSize(14).Bold()
 				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Claude Auth Mode:").FontSize(12).Bold()
+					ui.Text(c, "Anmeldung:").FontSize(12).Bold()
 					ui.Segmented(c.Key("cfg-cl-auth"), &a.claudeAuthIdx,
-						"Anthropic API Key",
-						"Via Antigravity Login (claude-sonnet/opus)",
-						"Local Claude CLI (claude -p)",
+						"Anthropic API-Key",
+						"Über Antigravity Login (claude-sonnet/opus)",
+						"Lokales Claude CLI (claude -p)",
 					)
 				})
 				ui.Form(c, func() {
-					ui.Field(c, "Claude Model", func() {
+					ui.Field(c, "Claude Modell", func() {
 						ui.Select(c.Key("cfg-cl-model"), &a.claudeModel, claudeModelList).Width(320)
 					})
-					ui.Field(c, "Anthropic API Key", func() {
+					ui.Field(c, "Anthropic API-Key", func() {
 						ui.TextInput(c.Key("cfg-cl-key"), &a.claudeKey).
-							Placeholder("sk-ant-api03-... (or use Antigravity / Claude CLI mode)").
+							Placeholder("sk-ant-api03-... (oder Antigravity / Claude CLI Modus wählen)").
 							FillWidth()
 					})
 				})
@@ -1133,12 +1342,12 @@ func (a *App) renderTabSettings(c *ui.Context) {
 
 			// Card 4: Wal-Panel Hotkey & Omarchy Theme
 			ui.Column(c).FillWidth().Padding(16).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(12).Children(func() {
-				ui.Text(c, "4. Wal-Panel Global Shortcut & Omarchy Theme").FontSize(14).Bold()
+				ui.Text(c, "4. Tastenkürzel & Farbschema (Theme)").FontSize(14).Bold()
 				ui.Form(c, func() {
-					ui.Field(c, "Global Wal-Panel Shortcut", func() {
+					ui.Field(c, "Globaler Shortcut für Schnellstart-Panel", func() {
 						ui.TextInput(c.Key("cfg-shortcut"), &a.shortcutText).Placeholder("Alt+Space").Width(240)
 					})
-					ui.Field(c, "Omarchy Theme Preset", func() {
+					ui.Field(c, "Farbschema (Theme)", func() {
 						ui.Select(c.Key("cfg-theme"), &a.themeSelect, omarchyThemes).Width(240)
 					})
 				})
@@ -1190,5 +1399,5 @@ func (a *App) saveSettingsFromDraft() {
 	_ = SaveConfig(a.ConfigPath, c)
 	a.AgyStatus = InspectAntigravityAuth(c)
 	a.statusErr = false
-	a.statusMsg = "Saved settings — Active AI: " + a.AI.ActiveProviderSummary()
+	a.statusMsg = "Einstellungen gespeichert — Aktive KI: " + a.AI.ActiveProviderSummary()
 }

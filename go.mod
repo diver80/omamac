@@ -1,4 +1,4 @@
-module omarc
+module omamac
 
 go 1.27.3
 

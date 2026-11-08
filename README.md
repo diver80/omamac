@@ -1,16 +1,18 @@
-# omarc (OmaMac) — Omarchy & OmaLauncher for macOS (`mygo`)
+# omamac (OmaMac) — Omarchy & OmaLauncher for macOS (`mygo`)
 
 Keyboard-first macOS Wal-Panel Launcher, Window Tiler & 2-Prompt Status Panel / Desktop Widget Studio built natively in Go with `github.com/egoist/mygo`.
 
 ## Key Features
-- **0-Token Live Polling**: AI (Gemini via Antigravity OAuth Login / API Key or Claude) is used **only** when creating (Prompt #1) or refining (Prompt #2) panels. Background polling executes local shell/Python scripts with **0 AI tokens**.
-- **OmaLauncher Quick-Card & Store**: Create `[ widget ]`, `[ app ]`, or `[ panel ]` in `3x3` or `6x2` grid sizes, switch themes (`TokyoNight`, `Vantablack`, `White`, `Catppuccin Mocha`), or install from the 5-category Store (including Pixel-Art Owl & live `mydealz` 3D-printer radar).
-- **Central Credentials Vault (`macOS Keychain`)**: Zero-leak `$ENV_VAR` injection into panels via `mygo.Secrets`.
-- **`omarc -check <panel.json>`**: Validates dependencies, runs live data refresh, and renders a Retina PNG preview.
+- **Übersicht mit 1-Klick-Schaltern (`An / Aus`)**: Schalte Status-Panels in einer klaren Übersicht direkt per Switch für die **macOS-Menüleiste** oder als schwebendes **Desktop-Widget** ein und aus — inklusive sofortiger Live-Vorschau.
+- **0-Token Live Polling**: KI (Gemini via Antigravity OAuth Login / API Key oder Claude) wird **nur** beim einmaligen Erstellen (Schritt 1) oder Anpassen (Schritt 2) genutzt. Im laufenden Betrieb führen die Panels lokal ihr Shell-/Python-Skript mit **0 KI-Tokens** aus.
+- **Vorlagen-Store & Schnellstart (`Alt+Space`)**: Fertige Panels und Widgets in 5 Kategorien (System, Mac & Akku, Web/mydealz 3D-Drucker, Fokus-Timer, Pixel-Art Owl) direkt per Switch aktivierbar.
+- **Zentraler Tresor (`macOS Keychain`)**: Zero-Leak `$ENV_VAR` Injektion in Panels über `mygo.Secrets`.
+- **`omamac -check <panel.json>`**: Prüft Abhängigkeiten, führt ein Live-Daten-Update aus und rendert eine Retina-PNG-Vorschau.
 
 ## Build & Run
 ```bash
+cd /Users/fhess/data/avono/dev/omamac
 go test -v ./...
-go build -o ./bin/omarc ./cmd/omarc
-./bin/omarc
+go build -o ./bin/omamac ./cmd/omamac
+./bin/omamac
 ```

@@ -80,8 +80,12 @@ func TestUIRenderAllViews(t *testing.T) {
 		t.Fatalf("NewApp failed: %v", err)
 	}
 
-	// Render Studio across all 4 tabs
-	for _, tab := range []StudioTab{TabPromptStudio, TabPanelsManager, TabWindowManager, TabSettings} {
+	if app.activeTab != TabOverview {
+		t.Fatalf("expected default tab to be TabOverview, got %d", app.activeTab)
+	}
+
+	// Render Studio across all 5 tabs
+	for _, tab := range []StudioTab{TabOverview, TabStore, TabPromptStudio, TabWindowManager, TabSettings} {
 		app.activeTab = tab
 		img := ui.Render(app.RenderStudioView, 1280, 800, 1.0)
 		if img == nil || img.Bounds().Dx() != 1280 {
@@ -89,11 +93,11 @@ func TestUIRenderAllViews(t *testing.T) {
 		}
 	}
 
-	// Render floating Wal-Panel in both AI Prompt Mode and Launcher Mode
-	for _, mode := range []int{0, 1} {
+	// Render floating Wal-Panel in all 3 modes (Overview+AI, Store, Launcher)
+	for _, mode := range []int{0, 1, 2} {
 		app.walMode = mode
-		img := ui.Render(app.RenderWalPanelView, 760, 520, 1.0)
-		if img == nil || img.Bounds().Dx() != 760 {
+		img := ui.Render(app.RenderWalPanelView, 820, 580, 1.0)
+		if img == nil || img.Bounds().Dx() != 820 {
 			t.Fatalf("failed to render Wal-Panel mode %d", mode)
 		}
 	}
@@ -118,7 +122,7 @@ func TestVaultZeroLeak(t *testing.T) {
 }
 
 func TestGenerateScreenshots(t *testing.T) {
-	outDir := "/Users/fhess/data/avono/dev/omarc/docs/omamac-screenshots"
+	outDir := filepath.Join("..", "..", "docs", "omamac-screenshots")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
@@ -132,6 +136,10 @@ func TestGenerateScreenshots(t *testing.T) {
 	app, err := NewApp(cfgPath)
 	if err != nil {
 		t.Fatalf("NewApp failed: %v", err)
+	}
+	// Show 3 active and 1 disabled panel in the overview so the ON/OFF switch states are clearly visible
+	if len(app.panels) >= 3 {
+		app.panels[2].Enabled = false
 	}
 	app.selectPanel("04-mydealz-3d")
 	app.prompt1Text = "Create a status panel listing current 3D-Drucker deals from mydealz.de/gruppe/3d-drucker and monitoring Idealo target price ($IDEALO_TARGET_PRICE)"
@@ -151,29 +159,36 @@ func TestGenerateScreenshots(t *testing.T) {
 		}
 	}
 
-	// First-Start Onboarding & 0-Token Help Dialog
+	// Default Main View: Übersicht & Schalter (with ON/OFF switches + Live Preview)
+	app.showHelpModal = false
+	app.activeTab = TabOverview
+	savePNG("01-overview-switches.png", app.RenderStudioView, 1320, 820)
+	savePNG("02-panels-manager.png", app.RenderStudioView, 1320, 820)
+
+	// Store View (with direct ON/OFF switches)
+	app.activeTab = TabStore
+	savePNG("02b-store-switches.png", app.RenderStudioView, 1320, 760)
+
+	// KI-Studio View
+	app.activeTab = TabPromptStudio
+	savePNG("01-studio-2prompt.png", app.RenderStudioView, 1320, 820)
+
+	// Settings & Keychain Vault View
+	app.activeTab = TabSettings
+	savePNG("03-settings-gemini-claude.png", app.RenderStudioView, 1320, 880)
+
+	// Kurzanleitung Modal
 	app.showHelpModal = true
 	savePNG("00-first-start-help.png", app.RenderStudioView, 1280, 760)
-
 	app.showHelpModal = false
-	app.activeTab = TabPromptStudio
-	savePNG("01-studio-2prompt.png", app.RenderStudioView, 1280, 800)
 
-	app.activeTab = TabPanelsManager
-	savePNG("02-panels-manager.png", app.RenderStudioView, 1280, 740)
-
-	app.activeTab = TabSettings
-	savePNG("03-settings-gemini-claude.png", app.RenderStudioView, 1280, 880)
-
+	// Floating Wal-Panel (Alt+Space) with Quick Overview Switches
 	app.walMode = 0
-	savePNG("04-wal-panel-ai.png", app.RenderWalPanelView, 820, 560)
+	savePNG("04-wal-panel-ai.png", app.RenderWalPanelView, 820, 580)
 
 	app.walMode = 1
-	savePNG("06-wal-panel-store.png", app.RenderWalPanelView, 820, 560)
+	savePNG("06-wal-panel-store.png", app.RenderWalPanelView, 820, 580)
 
 	app.walMode = 2
-	savePNG("05-wal-panel-launcher.png", app.RenderWalPanelView, 820, 560)
+	savePNG("05-wal-panel-launcher.png", app.RenderWalPanelView, 820, 580)
 }
-
-
-

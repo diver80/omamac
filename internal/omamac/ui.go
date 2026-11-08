@@ -12,14 +12,18 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// StudioTab represents the navigation sections in the OmaMac Studio & Settings window.
+// StudioTab represents the navigation sections in the OmaMac main window.
 type StudioTab int
 
 const (
-	TabPromptStudio StudioTab = iota
-	TabPanelsManager
-	TabWindowManager
-	TabSettings
+	TabOverview      StudioTab = iota // 🎛️ Übersicht & Schalter (Standard-Ansicht)
+	TabStore                          // 🏪 Vorlagen-Store (Fertige Panels mit Switch)
+	TabPromptStudio                   // ✨ KI-Studio (Erstellen & Anpassen)
+	TabWindowManager                  // 🪟 Fenster-Tiling & Apps
+	TabSettings                       // 🔐 KI & Tresor (Einstellungen)
+
+	// Alias for backward compatibility in tests
+	TabPanelsManager = TabOverview
 )
 
 type panelRuntime struct {
@@ -43,7 +47,7 @@ type App struct {
 	mainTray  *mygo.Tray
 
 	activeTab StudioTab
-	walMode   int // 0 = 2-Prompt AI Panel Studio, 1 = App & Window Launcher
+	walMode   int // 0 = 🎛️ Übersicht & KI, 1 = 🏪 Vorlagen-Store, 2 = 🪟 Fenster & Apps
 
 	panels   []*PanelSpec
 	runtimes map[string]*panelRuntime
@@ -83,6 +87,7 @@ type App struct {
 
 	showHelpModal     bool
 	dontShowHelpAgain bool
+	hideQuickGuide    bool
 
 	busy      bool
 	busyLabel string
@@ -94,7 +99,7 @@ type App struct {
 }
 
 var (
-	panelTypeLabels  = []string{"Native GPU (mygo/ui DSL)", "HTML/CSS/JS (WebView Glass)", "Both Types (Native + HTML)"}
+	panelTypeLabels  = []string{"Native GPU (mygo/ui)", "Web-Design (HTML/CSS)", "Beide Varianten"}
 	panelCountLabels = []string{"1 Panel", "2 Panels", "3 Panels", "4 Panels"}
 	geminiModelList  = []string{
 		"gemini-4-argon-medium",
@@ -114,6 +119,8 @@ var (
 	omarchyThemes = []string{
 		"TokyoNight",
 		"Catppuccin Mocha",
+		"Vantablack",
+		"White",
 		"Gruvbox Dark",
 		"Everforest",
 		"Kanagawa",
@@ -147,12 +154,14 @@ func NewApp(configPath string) (*App, error) {
 		Vault:             vault,
 		AI:                aiEngine,
 		AgyStatus:         InspectAntigravityAuth(cfg),
+		activeTab:         TabOverview,
 		panels:            panels,
 		runtimes:          make(map[string]*panelRuntime),
 		apps:              DiscoverMacApps(),
-		showHelpModal:     !cfg.OnboardingDismissed,
+		showHelpModal:     false,
 		dontShowHelpAgain: cfg.OnboardingDismissed,
-		statusMsg:         "OmaMac ready. AI is only used to create/refine panels — live polling uses 0 AI tokens!",
+		hideQuickGuide:    cfg.OnboardingDismissed,
+		statusMsg:         "Bereit — Schalte Panels über den Switch einfach an oder aus (Live-Polling verbraucht 0 KI-Tokens).",
 	}
 	if len(panels) > 0 {
 		a.selectPanel(panels[0].ID)
@@ -208,6 +217,44 @@ func (a *App) findPanel(id string) *PanelSpec {
 	return nil
 }
 
+func (a *App) countEnabledPanels() (enabledCount int, floatingCount int) {
+	for _, p := range a.panels {
+		if p.Enabled {
+			enabledCount++
+		}
+		if p.PinnedFloating {
+			floatingCount++
+		}
+	}
+	return enabledCount, floatingCount
+}
+
+func (a *App) persistPanelToggle(p *PanelSpec, actionDesc string) {
+	if p == nil {
+		return
+	}
+	_ = SavePanel(a.Config.PanelsDir, p)
+	a.syncAllPanelRuntimes()
+	if actionDesc != "" {
+		a.statusErr = false
+		a.statusMsg = actionDesc
+		a.toast(actionDesc)
+	}
+}
+
+func (a *App) setAllPanelsEnabled(enabled bool) {
+	for _, p := range a.panels {
+		p.Enabled = enabled
+		_ = SavePanel(a.Config.PanelsDir, p)
+	}
+	a.syncAllPanelRuntimes()
+	if enabled {
+		a.toast("Alle Panels in der macOS-Menüleiste aktiviert")
+	} else {
+		a.toast("Alle Panels in der macOS-Menüleiste deaktiviert")
+	}
+}
+
 // StartDesktopServices mounts the main OmaMac tray, all enabled status panel trays,
 // registers the global Wal-Panel shortcut, and starts periodic panel data refresh.
 func (a *App) StartDesktopServices(studioWin *mygo.Window) {
@@ -216,8 +263,8 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	// 1. Create the floating Wal-Panel (hidden initially, summoned via global shortcut or tray)
 	a.walWin = mygo.NewWindow(mygo.WindowOptions{
 		Title:             "OmaMac Wal-Panel",
-		Width:             760,
-		Height:            520,
+		Width:             820,
+		Height:            580,
 		Frameless:         true,
 		Panel:             true,
 		AlwaysOnTop:       true,
@@ -238,7 +285,7 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	if tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:      "omamac-master-tray",
 		Title:   "⌘ OmaMac",
-		ToolTip: "OmaMac – Wal-Panel Launcher & AI Status Panels",
+		ToolTip: "OmaMac – Übersicht & Wal-Panel öffnen",
 	}); err == nil {
 		a.mainTray = tray
 		tray.OnClick(func() {
@@ -492,7 +539,7 @@ func (a *App) triggerPrompt1Create() {
 	}
 
 	a.busy = true
-	a.busyLabel = fmt.Sprintf("Prompt #1: Creating %d %s(s) [%s] via %s + running omamac-check...", count, chosenKind, chosenGrid, a.AI.ActiveProviderSummary())
+	a.busyLabel = fmt.Sprintf("KI erstellt %d %s (%s) über %s + führt omamac-check aus...", count, chosenKind, chosenGrid, a.AI.ActiveProviderSummary())
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -509,7 +556,7 @@ func (a *App) triggerPrompt1Create() {
 			a.busy = false
 			if err != nil && len(created) == 0 {
 				a.statusErr = true
-				a.statusMsg = "Prompt #1 failed: " + err.Error()
+				a.statusMsg = "Erstellung fehlgeschlagen: " + err.Error()
 				a.toast(a.statusMsg)
 				return
 			}
@@ -522,8 +569,8 @@ func (a *App) triggerPrompt1Create() {
 			}
 			a.syncAllPanelRuntimes()
 			a.statusErr = false
-			a.statusMsg = fmt.Sprintf("Prompt #1 + omamac-check OK (%s): Created %d %s(s) [%s]!", providerUsed, len(created), chosenKind, chosenGrid)
-			a.toast(fmt.Sprintf("Created & verified %d new %s(s)!", len(created), chosenKind))
+			a.statusMsg = fmt.Sprintf("Erfolgreich erstellt & geprüft (%s): %d %s(s) [%s] aktiv!", providerUsed, len(created), chosenKind, chosenGrid)
+			a.toast(fmt.Sprintf("%d neues %s erstellt & aktiviert!", len(created), chosenKind))
 		})
 	}()
 }
@@ -541,7 +588,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 	}
 
 	a.busy = true
-	a.busyLabel = fmt.Sprintf("Prompt #2: Refining '%s' + running omamac-check...", target.Title)
+	a.busyLabel = fmt.Sprintf("KI passt '%s' an + führt omamac-check aus...", target.Title)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -553,7 +600,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			a.busy = false
 			if err != nil && updated == nil {
 				a.statusErr = true
-				a.statusMsg = "Prompt #2 failed: " + err.Error()
+				a.statusMsg = "Anpassung fehlgeschlagen: " + err.Error()
 				a.toast(a.statusMsg)
 				return
 			}
@@ -572,8 +619,8 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			a.syncAllPanelRuntimes()
 			a.prompt2Text = ""
 			a.statusErr = false
-			a.statusMsg = fmt.Sprintf("Prompt #2 + omamac-check OK on '%s' (%s) — hot-reloaded!", updated.Title, providerUsed)
-			a.toast("Refined & verified '" + updated.Title + "'")
+			a.statusMsg = fmt.Sprintf("'%s' aktualisiert & neu geladen (%s)!", updated.Title, providerUsed)
+			a.toast("Panel '" + updated.Title + "' live angepasst!")
 		})
 	}()
 }

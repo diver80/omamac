@@ -13,13 +13,13 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"omarc/internal/omamac"
+	"omamac/internal/omamac"
 )
 
 func main() {
-	configPath := flag.String("config", omamac.DefaultConfigPath(), "Path to OmaMac configuration file (~/.config/omamac/config.json)")
-	startWalOnly := flag.Bool("wal", false, "Open the floating Wal-Panel immediately on startup")
-	checkFile := flag.String("check", "", "Run owl-check / omamac-check on a panel JSON file: validates, executes live data refresh, and renders a PNG preview")
+	configPath := flag.String("config", omamac.DefaultConfigPath(), "Pfad zur OmaMac Konfigurationsdatei (~/.config/omamac/config.json)")
+	startWalOnly := flag.Bool("wal", false, "Schwebendes Wal-Panel direkt beim Start öffnen")
+	checkFile := flag.String("check", "", "Prüft eine Panel-JSON-Datei (owl-check / omamac-check), führt das Daten-Skript aus und rendert eine PNG-Vorschau")
 	flag.Parse()
 
 	if *checkFile != "" {
@@ -29,7 +29,7 @@ func main() {
 
 	mygo.App.SetName("OmaMac")
 	if mygo.App.Version() == "" {
-		mygo.App.SetVersion("1.0.0")
+		mygo.App.SetVersion("1.1.0")
 	}
 
 	appState, err := omamac.NewApp(*configPath)
@@ -53,7 +53,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		studioWin := mygo.NewWindow(mygo.WindowOptions{
-			Title:     "OmaMac – Omarchy Wal-Panel, 2-Prompt Status Panel Studio & Window Manager",
+			Title:     "OmaMac – Übersicht, Status-Panels & Wal-Panel Launcher",
 			Width:     1320,
 			Height:    840,
 			MinWidth:  980,
