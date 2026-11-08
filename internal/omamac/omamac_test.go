@@ -331,3 +331,12 @@ func TestMatchScore(t *testing.T) {
 		}
 	}
 }
+
+// agy's -p takes the prompt as its value, so the prompt must follow it directly.
+func TestAntigravityArgs(t *testing.T) {
+	got := strings.Join(antigravityArgs("gemini-4-argon-medium", "Hallo Welt"), "|")
+	want := "--disable-slash-commands|--model|gemini-4-argon-medium|-p|Hallo Welt"
+	if got != want {
+		t.Fatalf("args = %q, want %q", got, want)
+	}
+}

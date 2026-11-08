@@ -60,7 +60,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		studioWin := mygo.NewWindow(mygo.WindowOptions{
-			Title:     "OmaMac – Übersicht, Status-Panels & Wal-Panel Launcher",
+			Title:     "OmaMac",
 			Width:     1320,
 			Height:    840,
 			MinWidth:  980,

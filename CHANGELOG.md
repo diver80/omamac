@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+- **KI über Antigravity-Login funktioniert wieder:** Mit agy 1.5 schlug „Neues Panel“ und „Mit KI anpassen“ fehl („-p took --disable-slash-commands as its prompt“). Der Prompt wird jetzt korrekt übergeben.
+- Fehlermeldungen nennen den KI-Anbieter auch dann, wenn der Aufruf schon vorher scheitert.
+- Fenstertitel ist nur noch „OmaMac“.
+
 ## 1.3.0
 
 **Aufgeräumte Oberfläche**

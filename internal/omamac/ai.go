@@ -142,13 +142,7 @@ func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) 
 	runCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	args := []string{"-p", "--disable-slash-commands"}
-	if model != "" {
-		args = append(args, "--model", model)
-	}
-	args = append(args, prompt)
-
-	cmd := exec.CommandContext(runCtx, bin, args...)
+	cmd := exec.CommandContext(runCtx, bin, antigravityArgs(model, prompt)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -159,6 +153,25 @@ func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) 
 		return "", fmt.Errorf("agy CLI: %v: %s", err, cliErrorDetail(out, stderr.String()))
 	}
 	return out, nil
+}
+
+// antigravityArgs builds the agy command line. -p (--print) takes the prompt as
+// its value, so it goes last: "-p --disable-slash-commands <prompt>" sent the
+// flag as the prompt (agy 1.5 rejects that).
+func antigravityArgs(model, prompt string) []string {
+	args := []string{"--disable-slash-commands"}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	return append(args, "-p", prompt)
+}
+
+// unreachableErr says which AI failed, naming the configured one when the call did not get that far.
+func (e *AIEngine) unreachableErr(providerLabel string, err error) error {
+	if providerLabel == "" {
+		providerLabel = e.ActiveProviderSummary()
+	}
+	return fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
 }
 
 func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, error) {
@@ -349,7 +362,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 	rawResp, providerLabel, err := e.Complete(ctx, sysPrompt)
 	now := time.Now().Format("15:04:05")
 	if err != nil {
-		return nil, providerLabel, fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
+		return nil, providerLabel, e.unreachableErr(providerLabel, err)
 	}
 
 	{
@@ -420,7 +433,7 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 	now := time.Now().Format("15:04:05")
 	stepNum := len(existing.PromptHistory) + 1
 	if err != nil {
-		return nil, providerLabel, fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
+		return nil, providerLabel, e.unreachableErr(providerLabel, err)
 	}
 
 	{
