@@ -23,10 +23,6 @@ func (a *App) RenderStudioView(c *ui.Context) {
 				switch a.activeTab {
 				case TabStore:
 					a.renderTabStore(c)
-				case TabPromptStudio:
-					a.renderTabPromptStudio(c)
-				case TabWindowManager:
-					a.renderTabWindowManager(c)
 				case TabSettings:
 					a.renderTabSettings(c)
 				default:
@@ -46,6 +42,7 @@ func (a *App) RenderStudioView(c *ui.Context) {
 	})
 
 	a.renderHelpModal(c)
+	a.renderCreateDialog(c)
 
 	for _, msg := range a.toasts {
 		c.Toast(msg)
@@ -74,11 +71,9 @@ func (a *App) renderTopBar(c *ui.Context) {
 }
 
 var studioTabIDs = map[StudioTab]string{
-	TabOverview:      "panels",
-	TabStore:         "store",
-	TabPromptStudio:  "studio",
-	TabWindowManager: "windows",
-	TabSettings:      "settings",
+	TabOverview: "panels",
+	TabStore:    "store",
+	TabSettings: "settings",
 }
 
 func (a *App) renderStudioSidebar(c *ui.Context) {
@@ -92,8 +87,6 @@ func (a *App) renderStudioSidebar(c *ui.Context) {
 				ui.Badge(c, fmt.Sprintf("%d/%d", enabledCnt, len(a.panels)))
 			})
 			ui.SidebarItem(c, "store", nil, "Vorlagen")
-			ui.SidebarItem(c, "studio", nil, "KI-Studio")
-			ui.SidebarItem(c, "windows", nil, "Fenster & Apps")
 			ui.SidebarItem(c, "settings", nil, "Einstellungen")
 		}).FillWidth().Grow(1).Changed() {
 			for tab, id := range studioTabIDs {
@@ -162,20 +155,5 @@ func (a *App) closeHelpModal() {
 	if !a.Config.OnboardingDismissed {
 		a.Config.OnboardingDismissed = true
 		_ = SaveConfig(a.ConfigPath, a.Config)
-	}
-}
-
-// openCreate starts a new AI panel, with prompt as its description when given.
-func (a *App) openCreate(prompt string) {
-	if prompt != "" {
-		a.prompt1Text = prompt
-	}
-	a.activeTab = TabPromptStudio
-	if a.studioWin != nil {
-		a.studioWin.Show()
-		a.studioWin.Focus()
-	}
-	if a.walWin != nil {
-		a.walWin.Hide()
 	}
 }

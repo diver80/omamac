@@ -12,6 +12,14 @@
 - Vorlagen, Statusmeldungen und Antigravity-Status auf Deutsch.
 - Das Menüleisten-Popover zeigt nur noch das Panel (Anpassen per KI geschieht im Hauptfenster).
 
+**Einfachere Navigation**
+
+- Das Hauptfenster hat drei Bereiche: Panels, Vorlagen, Einstellungen. „Fenster & Apps“ gibt es nur noch im Schnellstart.
+- „+ Neues Panel“ öffnet einen Dialog: Beschreibung, Beispiele, Menüleiste oder Widget; Darstellung und Anzahl unter „Weitere Optionen“.
+- „Mit KI anpassen“ steht direkt beim gewählten Panel, mit dem bisherigen Verlauf (⌘↵ zum Anwenden).
+- Vorlagen: „Anpassen …“ öffnet den Dialog mit dem Text der Vorlage.
+- Links in Panels öffnen sich nur noch einmal (vorher doppelt).
+
 ## 1.2.2
 
 - **KI-Fehler werden angezeigt:** Ist die KI nicht erreichbar (Kontingent aufgebraucht, Login, Timeout) oder antwortet sie nicht mit Panel-JSON, wird kein Platzhalter-Panel mehr erzeugt und kein Panel verändert. Stattdessen erscheint die Fehlermeldung.

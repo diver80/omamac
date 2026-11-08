@@ -130,4 +130,3 @@ func (a *App) renderWalLauncherMode(c *ui.Context) {
 		})
 	})
 }
-

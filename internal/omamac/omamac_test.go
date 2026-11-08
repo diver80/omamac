@@ -139,8 +139,8 @@ func TestUIRenderAllViews(t *testing.T) {
 		t.Fatalf("expected default tab to be TabOverview, got %d", app.activeTab)
 	}
 
-	// Render Studio across all 5 tabs
-	for _, tab := range []StudioTab{TabOverview, TabStore, TabPromptStudio, TabWindowManager, TabSettings} {
+	// Render the main window's three views
+	for _, tab := range []StudioTab{TabOverview, TabStore, TabSettings} {
 		app.activeTab = tab
 		img := ui.Render(app.RenderStudioView, 1280, 800, 1.0)
 		if img == nil || img.Bounds().Dx() != 1280 {
@@ -225,27 +225,23 @@ func TestGenerateScreenshots(t *testing.T) {
 		}
 	}
 
-	// Default Main View: Übersicht & Schalter (with ON/OFF switches + Live Preview)
 	app.showHelpModal = false
 	app.activeTab = TabOverview
-	savePNG("01-overview-switches.png", app.RenderStudioView, 1320, 820)
-	savePNG("02-panels-manager.png", app.RenderStudioView, 1320, 820)
+	savePNG("01-panels.png", app.RenderStudioView, 1320, 820)
 
-	// Store View (with direct ON/OFF switches)
+	app.showCreate = true
+	savePNG("02-neues-panel.png", app.RenderStudioView, 1320, 820)
+	app.showCreate = false
+
 	app.activeTab = TabStore
-	savePNG("02b-store-switches.png", app.RenderStudioView, 1320, 760)
+	savePNG("03-vorlagen.png", app.RenderStudioView, 1320, 760)
 
-	// KI-Studio View
-	app.activeTab = TabPromptStudio
-	savePNG("01-studio-2prompt.png", app.RenderStudioView, 1320, 820)
-
-	// Settings & Keychain Vault View
 	app.activeTab = TabSettings
-	savePNG("03-settings-gemini-claude.png", app.RenderStudioView, 1320, 880)
+	savePNG("04-einstellungen.png", app.RenderStudioView, 1320, 880)
 
-	// Kurzanleitung Modal
+	app.activeTab = TabOverview
 	app.showHelpModal = true
-	savePNG("00-first-start-help.png", app.RenderStudioView, 1280, 760)
+	savePNG("00-kurzanleitung.png", app.RenderStudioView, 1280, 760)
 	app.showHelpModal = false
 
 	// Floating Wal-Panel (Alt+Space) with Quick Overview Switches

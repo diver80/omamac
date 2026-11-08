@@ -148,7 +148,7 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 	})
 }
 
-// renderPanelRefine is where a panel is changed with the AI.
+// renderPanelRefine changes the chosen panel with one sentence to the AI.
 func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 	t := c.Theme()
 	if sel.IsBuiltin {
@@ -156,9 +156,37 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 			FontSize(11.5).TextColor(t.TextMuted)
 		return
 	}
-	if ui.Button(c.Key("detail-ai-edit"), "✨ Mit KI anpassen …").Clicked() {
-		a.activeTab = TabPromptStudio
-	}
+	ui.Column(c.Key("refine")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+		ui.Text(c, "Mit KI anpassen").FontSize(13).Bold()
+		submit := ui.TextArea(c.Key("refine-prompt-"+sel.ID), &a.prompt2Text).
+			Placeholder("z. B. „Färbe den Status rot, wenn der Preis unter 400 € fällt“").
+			Height(56).FillWidth().Shortcut(ui.Cmd, ui.KeyEnter)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			if n := len(sel.PromptHistory); n > 0 {
+				label := fmt.Sprintf("Verlauf (%d)", n)
+				if a.showHistory {
+					label = "Verlauf ausblenden"
+				}
+				if textButton(c, "refine-history", label) {
+					a.showHistory = !a.showHistory
+				}
+			}
+			ui.Spacer(c)
+			busy := a.busy || strings.TrimSpace(a.prompt2Text) == ""
+			if (ui.PrimaryButton(c.Key("refine-submit"), "Anpassen").Tooltip("⌘↵").Disabled(busy).Clicked() || submit) && !busy {
+				a.triggerPrompt2Refine(sel.ID, a.prompt2Text)
+			}
+		})
+		if a.showHistory {
+			for i, ph := range sel.PromptHistory {
+				ui.Row(c.Key(fmt.Sprintf("refine-step-%d", i))).FillWidth().Gap(8).Children(func() {
+					ui.Text(c, fmt.Sprintf("%d.", ph.Step)).FontSize(11).TextColor(t.TextMuted).Width(18)
+					ui.Text(c, ph.Prompt).FontSize(11).Grow(1).MinWidth(0)
+					ui.Text(c, ph.Timestamp).FontSize(10.5).TextColor(t.TextMuted)
+				})
+			}
+		}
+	})
 }
 
 // renderPanelMoreMenu is the ⋯ menu of a panel: the rarer actions, deleting last.

@@ -18,19 +18,14 @@ import (
 type StudioTab int
 
 const (
-	TabOverview      StudioTab = iota // 🎛️ Übersicht & Schalter (Standard-Ansicht)
-	TabStore                          // 🏪 Vorlagen-Store (Fertige Panels mit Switch)
-	TabPromptStudio                   // ✨ KI-Studio (Erstellen & Anpassen)
-	TabWindowManager                  // 🪟 Fenster-Tiling & Apps
-	TabSettings                       // 🔐 KI & Tresor (Einstellungen)
-
-	// Alias for backward compatibility in tests
-	TabPanelsManager = TabOverview
+	TabOverview StudioTab = iota // Panels: switches, preview, AI refine (default)
+	TabStore                     // Vorlagen: ready-made panels
+	TabSettings                  // Einstellungen: AI provider, vault, general
 )
 
 type panelRuntime struct {
-	spec       *PanelSpec
-	tray       *mygo.Tray
+	spec     *PanelSpec
+	tray     *mygo.Tray
 	flyout   *mygo.Window
 	floating *mygo.Window
 
@@ -71,7 +66,10 @@ type App struct {
 	apps     []QuickCommand
 
 	// AI create (prompt 1) & refine (prompt 2) state
-	createAsWidget  bool // new panels are pinned as desktop widget instead of shown in the menu bar only
+	showCreate      bool // the "Neues Panel" dialog
+	createPlaceIdx  int  // 0 = menu bar, 1 = menu bar + desktop widget
+	showCreateMore  bool // the dialog's further options
+	showHistory     bool // the AI steps of the chosen panel
 	prompt1Text     string
 	prompt1TypeIdx  int // 0 = Native (mygo/ui), 1 = HTML (WebView), 2 = Both (Native + HTML)
 	prompt1CountIdx int // 0 = 1 Panel, 1 = 2 Panels, 2 = 3 Panels, 3 = 4 Panels
@@ -151,17 +149,17 @@ func NewApp(configPath string) (*App, error) {
 	aiEngine.Vault = vault
 
 	a := &App{
-		ConfigPath:        configPath,
-		Config:            cfg,
-		Vault:             vault,
-		AI:                aiEngine,
-		Jira:              NewJiraModuleState(filepath.Dir(cfg.PanelsDir)),
-		AgyStatus:         InspectAntigravityAuth(cfg),
-		activeTab:         TabOverview,
-		panels:            panels,
-		runtimes:          make(map[string]*panelRuntime),
-		apps:              DiscoverMacApps(),
-		showHelpModal:     !cfg.OnboardingDismissed, // the short guide opens once, on the first start
+		ConfigPath:    configPath,
+		Config:        cfg,
+		Vault:         vault,
+		AI:            aiEngine,
+		Jira:          NewJiraModuleState(filepath.Dir(cfg.PanelsDir)),
+		AgyStatus:     InspectAntigravityAuth(cfg),
+		activeTab:     TabOverview,
+		panels:        panels,
+		runtimes:      make(map[string]*panelRuntime),
+		apps:          DiscoverMacApps(),
+		showHelpModal: !cfg.OnboardingDismissed, // the short guide opens once, on the first start
 	}
 	if len(panels) > 0 {
 		a.selectPanel(panels[0].ID)
@@ -703,7 +701,7 @@ func (a *App) triggerPrompt1Create() {
 	case 2:
 		reqType = "both"
 	}
-	asWidget := a.createAsWidget
+	asWidget := a.createPlaceIdx == 1
 	count := a.prompt1CountIdx + 1
 
 	var vaultEnv []string

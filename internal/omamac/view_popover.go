@@ -78,9 +78,7 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 					ui.Row(c.Key(fmt.Sprintf("r-%s-%d", p.ID, idx))).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 						ui.Text(c, rCopy.Left).FontSize(11.5).TextColor(t.TextMuted).Grow(1).SingleLine()
 						if rCopy.URL != "" {
-							if ui.Link(c.Key(fmt.Sprintf("rl-%s-%d", p.ID, idx)), rCopy.Right, rCopy.URL).FontSize(11.5).Clicked() {
-								_ = mygo.Shell.OpenExternal(rCopy.URL)
-							}
+							ui.Link(c.Key(fmt.Sprintf("rl-%s-%d", p.ID, idx)), rCopy.Right, rCopy.URL).FontSize(11.5) // opens the URL itself
 						} else {
 							ui.Text(c, rCopy.Right).FontSize(11.5).Bold().SingleLine()
 						}

@@ -120,3 +120,18 @@ func shortcutLabel(s string) string {
 	}
 	return out
 }
+
+// textButton is a button that reads as a link in the accent color, for light
+// actions inside text (examples, "Verlauf"). ui.Link would open a URL.
+func textButton(c *ui.Context, key, label string) bool {
+	t := c.Theme()
+	btn := ui.ButtonBase(c.Key(key)).Cursor(ui.CursorPointer)
+	hovered := btn.Hovered()
+	btn.Children(func() {
+		txt := ui.Text(c, label).FontSize(11.5).TextColor(t.Accent).SingleLine()
+		if hovered {
+			txt.TextColor(t.Accent.Alpha(0.75))
+		}
+	})
+	return btn.Clicked()
+}
