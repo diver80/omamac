@@ -15,10 +15,6 @@ import (
 
 const keychainService = "de.diver80.omamac.vault"
 
-// legacyKeychainServices are earlier Keychain service names; secrets found there are moved
-// to keychainService on load (the app identifier changed from com.avono.omamac to de.diver80.omamac).
-var legacyKeychainServices = []string{"com.avono.omamac.vault"}
-
 // CredentialMeta describes a secret stored in the central OmaMac Vault.
 // The secret Value itself is stored in macOS Keychain (via mygo.Secrets) + 0600 local vault file,
 // and is NEVER sent to AI prompts—only Name and Description are exposed to the AI generator.
@@ -89,19 +85,6 @@ func LoadVault(path string) (*Vault, error) {
 	for _, e := range v.Entries {
 		if raw, err := sec.Get(e.Name); err == nil && len(raw) > 0 {
 			v.values[e.Name] = string(raw)
-			continue
-		}
-		for _, legacy := range legacyKeychainServices {
-			old := mygo.Secrets.Service(legacy)
-			raw, err := old.Get(e.Name)
-			if err != nil || len(raw) == 0 {
-				continue
-			}
-			v.values[e.Name] = string(raw)
-			if sec.Set(e.Name, raw) == nil {
-				_ = old.Delete(e.Name)
-			}
-			break
 		}
 	}
 	return v, nil

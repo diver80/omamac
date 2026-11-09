@@ -631,12 +631,12 @@ func TestMenuBarText(t *testing.T) {
 	if got := p.TrayLabel(); got != "🛡️ Audit ✓" {
 		t.Fatalf("automatic = %q", got)
 	}
-	p.MenuBarText = "Helvetia {status}"
-	if got := p.TrayLabel(); got != "🛡️ Helvetia Audit ✓" {
+	p.MenuBarText = "Kunde A {status}"
+	if got := p.TrayLabel(); got != "🛡️ Kunde A Audit ✓" {
 		t.Fatalf("with token = %q", got)
 	}
-	p.MenuBarText, p.Status = "Helvetia", "crit"
-	if got := p.TrayLabel(); got != "🔴 🛡️ Helvetia" {
+	p.MenuBarText, p.Status = "Kunde A", "crit"
+	if got := p.TrayLabel(); got != "🔴 🛡️ Kunde A" {
 		t.Fatalf("fixed, critical = %q", got)
 	}
 }

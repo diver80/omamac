@@ -354,7 +354,7 @@ func (a *App) renderRenameDialog(c *ui.Context) {
 					ui.Column(c).FillWidth().Gap(4).Children(func() {
 						submit = ui.TextInput(c.Key("rename-menu"), &a.renameMenu).
 							Placeholder("automatisch: „"+strings.TrimSpace(p.BadgeText)+"“").FillWidth().Shortcut(0, ui.KeyEnter) || submit
-						ui.Text(c, "Leer: Text des Skripts. "+MenuBarStatusToken+" fügt ihn ein – z. B. „Helvetia "+MenuBarStatusToken+"“").
+						ui.Text(c, "Leer: Text des Skripts. "+MenuBarStatusToken+" fügt ihn ein – z. B. „Kunde A "+MenuBarStatusToken+"“").
 							FontSize(11.5).TextColor(t.TextMuted)
 					})
 				})
