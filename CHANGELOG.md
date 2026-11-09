@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.2
+
+- **Antwort der KI formatiert:** Das JSON wird eingerückt angezeigt – schon live, während die KI noch schreibt. Befehle und HTML in der Antwort erscheinen mit echten Zeilenumbrüchen statt `\n`. „Ausgabe kopieren“ liefert gültiges, eingerücktes JSON.
+
 ## 1.4.1
 
 - **KI-Fenster bleibt bis „OK“ offen:** Nach dem Erstellen oder Anpassen zeigt es das Ergebnis aufbereitet – Titel, Darstellung, Aktualisierungsintervall, den Befehl als lesbaren Code, den ersten Datenabruf und die Aktionen. Die rohe Antwort der KI liegt eingeklappt darunter, als eingerücktes JSON. Nur „Im Hintergrund“ blendet das Fenster vorher aus.

@@ -298,8 +298,8 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 				if compact && textButton(c, "ai-run-expand", "Protokoll anzeigen") {
 					a.aiRunExpanded = true
 				}
-				if !compact && v.output != "" && ui.Button(c.Key("ai-run-copy"), "Ausgabe kopieren").Clicked() {
-					c.WriteClipboard(v.output)
+				if !compact && v.output != "" && ui.Button(c.Key("ai-run-copy"), "Ausgabe kopieren").Tooltip("Als eingerücktes JSON, wenn die Antwort gültiges JSON ist").Clicked() {
+					c.WriteClipboard(prettyAIOutput(v.output))
 					a.toast("Ausgabe kopiert")
 				}
 				ui.Spacer(c)
@@ -397,13 +397,13 @@ func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
 		ui.Text(c, "Warte auf die erste Ausgabe der KI …").FontSize(12).TextColor(t.TextMuted)
 	case !v.done:
 		ui.Text(c, "Antwort der KI (live)").FontSize(11.5).Bold().TextColor(t.TextMuted)
-		code(v.output)
+		code(formatJSONStream(v.output, true))
 	case v.output == "":
 	case v.result != nil:
-		ui.Collapsible(c, "Rohe Antwort der KI", &a.aiRunShowRaw, func() { code(prettyAIOutput(v.output)) })
+		ui.Collapsible(c, "Antwort der KI", &a.aiRunShowRaw, func() { code(formatJSONStream(v.output, true)) })
 	default:
 		ui.Text(c, "Antwort der KI").FontSize(11.5).Bold().TextColor(t.TextMuted)
-		code(prettyAIOutput(v.output))
+		code(formatJSONStream(v.output, true))
 	}
 }
 
@@ -456,7 +456,7 @@ func (a *App) renderAIResultPanel(c *ui.Context, key string, p aiResultPanel) {
 				}
 			})
 			if p.firstOutput != "" {
-				code(prettyAIOutput(p.firstOutput))
+				code(formatJSONStream(p.firstOutput, true))
 			}
 		}
 		if len(p.actions) > 0 {

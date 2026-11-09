@@ -251,7 +251,7 @@ func TestGenerateScreenshots(t *testing.T) {
 		{0, "Bild icon.png vorbereitet (31 KB)"},
 		{0, "Anfrage an Claude (claude-sonnet-5-5-medium via claude CLI) gesendet (2840 Zeichen, 1 Bild(er))"},
 	}
-	app.aiRun.output.WriteString("[\n  {\n    \"id\": \"mydealz-3d-drucker\",\n    \"title\": \"3D-Drucker-Deals\",\n    \"subtitle\": \"mydealz · Idealo-Zielpreis $IDEALO_TARGET_PRICE\",\n    \"icon\": \"🖨\",\n    \"type\": \"native\",\n    \"refresh_seconds\": 300,\n    \"command\": \"python3 - <<'PY'\\nimport json, os, urllib.request")
+	app.aiRun.output.WriteString(`{"id":"forge-app-audit-log","title":"Forge App Audit-Log","subtitle":"example.atlassian.net · Fehleranzahl","kind":"widget","icon":"🛡️","badge_text":"Audit: 0 Fehler","status":"ok","type":"native","refresh_seconds":120,"command":"python3 - <<'PY'\nimport os,json,base64,urllib.request\nU=os.environ.get('ATLASSIAN_BASE_URL','https://example.atlassian.net').rstrip('/')\ndef out(d):\n print(json.dumps(d));raise SystemExit(0)\nif not os.environ.get('ATLASSIAN_API_TOKEN'):out({'badge_text':'Audit: Creds fehlen','status':'error'})\ntry:\n d=json.load(urllib.request.urlopen(U+'/rest/api/3/auditing/record?limit=200',timeout=15))\nexcept Exception as x:out({'badge_text':'Audit ⚠ API','status':'error','rows':[{'left':str(x)[:70]}]})\nR=d if isinstance(d,list) else`)
 	app.busy, app.busyLabel, app.showAIRun = true, "KI erstellt das Panel …", true
 	savePNG("07-ki-ausgabe.png", app.RenderStudioView, 1320, 900)
 
@@ -580,5 +580,29 @@ func TestPrettyAIOutput(t *testing.T) {
 	}
 	if prettyAIOutput("kein JSON") != "kein JSON" {
 		t.Fatal("plain text must stay as it is")
+	}
+}
+
+// Complete JSON comes out exactly as json.Indent would print it; any prefix of
+// it (the AI still writing) is formatted the same way up to where it ends.
+func TestFormatJSONStream(t *testing.T) {
+	compact := `{"id":"x","rows":[{"left":"a, b","right":"{not json}"}],"empty":{},"list":[],"n":1.5,"ok":true,"q":"say \"hi\""}`
+	var want bytes.Buffer
+	if err := json.Indent(&want, []byte(compact), "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if got := formatJSONStream(compact, false); got != want.String() {
+		t.Fatalf("got\n%s\nwant\n%s", got, want.String())
+	}
+	for i := 1; i < len(compact); i++ {
+		part := formatJSONStream(compact[:i], false)
+		if !strings.HasPrefix(want.String(), strings.TrimRight(part, " \n")) {
+			t.Fatalf("prefix %d: %q is not a prefix of the full output", i, part)
+		}
+	}
+	fenced := "Hier:\n```json\n[{\"command\":\"line1\\nline2\"}]\n```"
+	got := formatJSONStream(fenced, true)
+	if !strings.HasPrefix(got, "Hier:\n```json\n[") || !strings.Contains(got, "\"line1\n      line2\"") || !strings.HasSuffix(got, "]\n```") {
+		t.Fatalf("fenced = %q", got)
 	}
 }

@@ -295,3 +295,88 @@ func (c *claudeStreamCollector) answer() (string, error) {
 	}
 	return "", errors.New("keine Ausgabe")
 }
+
+// formatJSONStream indents JSON that may still be arriving: it works on any
+// prefix of a JSON text, so the live view stays readable while the AI writes.
+// Text before the first { or [ and after the top-level value closes (prose,
+// ``` fences) is kept as it is. With expandStrings, a \n inside a string becomes
+// a real, indented line break – for reading a command or HTML, not valid JSON.
+func formatJSONStream(raw string, expandStrings bool) string {
+	start := strings.IndexAny(raw, "{[")
+	if start < 0 {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw) + len(raw)/4)
+	b.WriteString(raw[:start])
+	depth := 0
+	newline := func(d int) {
+		b.WriteByte('\n')
+		for k := 0; k < d; k++ {
+			b.WriteString("  ")
+		}
+	}
+	inStr := false
+	for j := start; j < len(raw); j++ {
+		ch := raw[j]
+		if inStr {
+			switch {
+			case ch == '\\' && j+1 < len(raw):
+				j++
+				if expandStrings && raw[j] == 'n' {
+					newline(depth + 1)
+				} else {
+					b.WriteByte('\\')
+					b.WriteByte(raw[j])
+				}
+			case ch == '"':
+				inStr = false
+				b.WriteByte('"')
+			default:
+				b.WriteByte(ch)
+			}
+			continue
+		}
+		switch ch {
+		case '"':
+			inStr = true
+			b.WriteByte('"')
+		case '{', '[':
+			b.WriteByte(ch)
+			k := j + 1
+			for k < len(raw) && strings.IndexByte(" \t\r\n", raw[k]) >= 0 {
+				k++
+			}
+			if k < len(raw) && (raw[k] == '}' || raw[k] == ']') { // {} and [] stay on one line
+				b.WriteByte(raw[k])
+				j = k
+				if depth == 0 {
+					b.WriteString(raw[j+1:])
+					return b.String()
+				}
+				continue
+			}
+			depth++
+			newline(depth)
+		case '}', ']':
+			if depth > 0 {
+				depth--
+			}
+			newline(depth)
+			b.WriteByte(ch)
+			if depth == 0 {
+				b.WriteString(raw[j+1:])
+				return b.String()
+			}
+		case ',':
+			b.WriteByte(',')
+			newline(depth)
+		case ':':
+			b.WriteString(": ")
+		case ' ', '\t', '\r', '\n':
+		default:
+			b.WriteByte(ch)
+		}
+	}
+	return b.String()
+}
