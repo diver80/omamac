@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- **Jira Aktivität (neues System-Modul):** Der Activity Stream aller Jira-Instanzen in einer Liste, wie das Gadget in Data Center – wer was an welchem Ticket getan hat, mit Kommentartext, nach Tagen gruppiert. „Meine Tickets“ (zugewiesen, gemeldet oder beobachtet, letzte 14 Tage) oder „Alle“; je Instanz auf Projekte einschränkbar (⚙️). Filter nach Instanz und Suchfeld; ein Klick öffnet das Ticket.
+- **Jira Woche (neues System-Modul):** Kanban einer Woche über alle Instanzen, eine Spalte je Tag, mit ◀ / Heute / ▶ zum Blättern. Einordnung nach „Geändert“, „Erledigt“ oder „Fällig“ (in der aktuellen Woche mit Spalte „Überfällig“); Kartenfarbe nach Status. Welche Tickets, legt je Instanz eine JQL fest (⚙️, Standard: mir zugewiesen).
+- Beide kommen ausgeschaltet an und nutzen die Instanzen aus Jira Quick-Access.
+
 ## 1.6.2
 
 - `omamac -check` gibt dem geprüften Panel jetzt auch die Jira-Variablen (`$JIRA_<NAME>_*`) mit, wie die App selbst.

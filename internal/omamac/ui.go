@@ -686,6 +686,14 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 		}
 	case BuiltinAtlassianStatus:
 		RefreshAtlassianStatusPanel(ctx, p)
+	case BuiltinJiraActivity:
+		if a.Jira != nil {
+			a.Jira.RefreshActivityPanel(ctx, p)
+		}
+	case BuiltinJiraWeek:
+		if a.Jira != nil {
+			a.Jira.RefreshWeekPanel(ctx, p)
+		}
 	default:
 		_ = p.RunDataRefresh(ctx, panelEnv(a.Vault, a.Jira)...)
 	}

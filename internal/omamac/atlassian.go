@@ -72,6 +72,11 @@ type JiraInstanceConfig struct {
 	APIToken string `json:"api_token"`
 	JQLQuery string `json:"jql_query"`
 	Enabled  bool   `json:"enabled"`
+
+	// ActivityProjects limits the activity stream to these project keys ("ABC, XYZ"); empty = whole site.
+	ActivityProjects string `json:"activity_projects,omitempty"`
+	// WeekJQL picks the tickets of the week board; empty = defaultWeekJQL.
+	WeekJQL string `json:"week_jql,omitempty"`
 }
 
 // JiraIssue represents a single ticket fetched via JQL.
@@ -135,6 +140,10 @@ type JiraModuleState struct {
 	NewInstEmail string
 	NewInstToken string
 	NewInstJQL   string
+
+	// Activity stream and week board (jira_activity.go, jira_week.go)
+	act  activityState
+	week weekState
 
 	boardWin  *mygo.Window
 	ticketWin *mygo.Window
@@ -358,23 +367,44 @@ func (j *JiraModuleState) syncPanelSpecFromIssues(p *PanelSpec, issues []JiraIss
 }
 
 func (j *JiraModuleState) fetchInstanceJQL(ctx context.Context, inst JiraInstanceConfig) ([]JiraIssue, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(inst.BaseURL), "/")
 	jql := strings.TrimSpace(inst.JQLQuery)
 	if jql == "" {
 		jql = defaultJiraJQL
 	}
-	auth := ""
-	if inst.Email != "" {
-		creds := fmt.Sprintf("%s:%s", strings.TrimSpace(inst.Email), strings.TrimSpace(inst.APIToken))
-		auth = "Basic " + base64.StdEncoding.EncodeToString([]byte(creds))
-	} else {
-		auth = "Bearer " + strings.TrimSpace(inst.APIToken)
+	found, err := j.searchJQL(ctx, inst, jql, 50)
+	if err != nil {
+		return nil, err
 	}
+	out := make([]JiraIssue, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.JiraIssue)
+	}
+	return out, nil
+}
 
+// jiraAuthHeader is Basic auth (e-mail + API token, Cloud) or Bearer (PAT, Data Center).
+func jiraAuthHeader(inst JiraInstanceConfig) string {
+	if inst.Email != "" {
+		creds := strings.TrimSpace(inst.Email) + ":" + strings.TrimSpace(inst.APIToken)
+		return "Basic " + base64.StdEncoding.EncodeToString([]byte(creds))
+	}
+	return "Bearer " + strings.TrimSpace(inst.APIToken)
+}
+
+// foundIssue is a JQL hit with the dates the week board sorts by (zero when unset).
+type foundIssue struct {
+	JiraIssue
+	Due      time.Time // duedate, a day without time, local
+	Resolved time.Time
+}
+
+// searchJQL runs jql on one instance: Cloud's /rest/api/3/search/jql, else Data Center's /rest/api/2/search.
+func (j *JiraModuleState) searchJQL(ctx context.Context, inst JiraInstanceConfig, jql string, max int) ([]foundIssue, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(inst.BaseURL), "/")
 	payload, _ := json.Marshal(map[string]any{
 		"jql":        jql,
-		"maxResults": 50,
-		"fields":     []string{"summary", "status", "priority", "issuetype", "updated"},
+		"maxResults": max,
+		"fields":     []string{"summary", "status", "priority", "issuetype", "updated", "duedate", "resolutiondate"},
 	})
 
 	endpoints := []string{
@@ -384,14 +414,14 @@ func (j *JiraModuleState) fetchInstanceJQL(ctx context.Context, inst JiraInstanc
 
 	var lastErr error
 	for _, ep := range endpoints {
-		reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, ep, bytes.NewReader(payload))
 		if err != nil {
 			cancel()
 			lastErr = err
 			continue
 		}
-		req.Header.Set("Authorization", auth)
+		req.Header.Set("Authorization", jiraAuthHeader(inst))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 
@@ -423,13 +453,15 @@ func (j *JiraModuleState) fetchInstanceJQL(ctx context.Context, inst JiraInstanc
 							Key string `json:"key"`
 						} `json:"statusCategory"`
 					} `json:"status"`
-					Priority struct {
+					Priority *struct {
 						Name string `json:"name"`
 					} `json:"priority"`
 					IssueType struct {
 						Name string `json:"name"`
 					} `json:"issuetype"`
-					Updated string `json:"updated"`
+					Updated        string `json:"updated"`
+					DueDate        string `json:"duedate"`
+					ResolutionDate string `json:"resolutiondate"`
 				} `json:"fields"`
 			} `json:"issues"`
 		}
@@ -437,20 +469,29 @@ func (j *JiraModuleState) fetchInstanceJQL(ctx context.Context, inst JiraInstanc
 			return nil, err
 		}
 
-		var out []JiraIssue
+		var out []foundIssue
 		for _, raw := range parsed.Issues {
-			out = append(out, JiraIssue{
+			f := raw.Fields
+			iss := JiraIssue{
 				InstanceID:   inst.ID,
 				InstanceName: inst.Name,
 				BaseURL:      baseURL,
 				Key:          raw.Key,
-				Summary:      raw.Fields.Summary,
-				StatusName:   raw.Fields.Status.Name,
-				CategoryKey:  raw.Fields.Status.StatusCategory.Key,
-				Priority:     raw.Fields.Priority.Name,
-				IssueType:    raw.Fields.IssueType.Name,
+				Summary:      f.Summary,
+				StatusName:   f.Status.Name,
+				CategoryKey:  f.Status.StatusCategory.Key,
+				IssueType:    f.IssueType.Name,
+				Updated:      parseJiraTime(f.Updated),
 				URL:          fmt.Sprintf("%s/browse/%s", baseURL, url.PathEscape(raw.Key)),
-			})
+			}
+			if f.Priority != nil {
+				iss.Priority = f.Priority.Name
+			}
+			fi := foundIssue{JiraIssue: iss, Resolved: parseJiraTime(f.ResolutionDate)}
+			if d, err := time.ParseInLocation("2006-01-02", f.DueDate, time.Local); err == nil {
+				fi.Due = d
+			}
+			out = append(out, fi)
 		}
 		return out, nil
 	}
@@ -458,6 +499,16 @@ func (j *JiraModuleState) fetchInstanceJQL(ctx context.Context, inst JiraInstanc
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("no supported search endpoint on %s", baseURL)
+}
+
+// parseJiraTime reads Jira's "2026-11-09T15:36:20.527+0100" (and RFC 3339) as local time; zero when empty.
+func parseJiraTime(s string) time.Time {
+	for _, layout := range []string{"2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", time.RFC3339Nano} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.Local()
+		}
+	}
+	return time.Time{}
 }
 
 func (j *JiraModuleState) FilteredIssues() []JiraIssue {

@@ -73,7 +73,7 @@ type PanelSpec struct {
 	Status         string        `json:"status"`                  // "ok", "warn", "crit", "info"
 	Type           PanelType     `json:"type"`                    // "native" (mygo/ui) or "html" (WebView)
 	IsBuiltin      bool          `json:"is_builtin,omitempty"`    // True for pre-delivered system modules (not AI-editable)
-	BuiltinKind    string        `json:"builtin_kind,omitempty"`  // "atlassian-status" or "jira-quick-access"
+	BuiltinKind    string        `json:"builtin_kind,omitempty"`  // "atlassian-status", "jira-quick-access", "jira-activity", "jira-week"
 	Enabled        bool          `json:"enabled"`                 // Show in macOS Menubar as Tray + Flyout
 	PinnedFloating bool          `json:"pinned_floating"`         // Also pin as floating desktop HUD / Home-Screen Widget tile
 	RefreshSeconds int           `json:"refresh_seconds"`         // Auto-refresh interval in seconds (0 AI tokens used!)
@@ -424,6 +424,41 @@ func BuiltinSystemPanels() []*PanelSpec {
 				{Label: "Atlassian Statuspage ↗", URL: "https://status.atlassian.com", Style: "primary"},
 			},
 			LastUpdated: now,
+		},
+		// Added in 1.7: off at first, they need Jira instances of Jira Quick-Access.
+		{
+			ID:             "00-jira-activity",
+			Title:          "Jira Aktivität",
+			Subtitle:       "Activity Stream aller Jira-Instanzen, wie das Gadget in Data Center",
+			Kind:           "app",
+			GridSize:       "3x3",
+			Icon:           "📰",
+			BadgeText:      "Aktivität …",
+			Status:         "info",
+			Type:           PanelTypeNative,
+			IsBuiltin:      true,
+			BuiltinKind:    BuiltinJiraActivity,
+			RefreshSeconds: 300,
+			Width:          560,
+			Height:         620,
+			LastUpdated:    now,
+		},
+		{
+			ID:             "00-jira-week",
+			Title:          "Jira Woche",
+			Subtitle:       "Kanban der Woche über alle Jira-Instanzen – eine Spalte je Tag, Woche für Woche blättern",
+			Kind:           "app",
+			GridSize:       "6x2",
+			Icon:           "📅",
+			BadgeText:      "Woche …",
+			Status:         "info",
+			Type:           PanelTypeNative,
+			IsBuiltin:      true,
+			BuiltinKind:    BuiltinJiraWeek,
+			RefreshSeconds: 300,
+			Width:          1040,
+			Height:         560,
+			LastUpdated:    now,
 		},
 	}
 }

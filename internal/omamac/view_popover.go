@@ -15,8 +15,15 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 	if p == nil {
 		return
 	}
-	if p.BuiltinKind == BuiltinJiraQuickAccess {
+	switch p.BuiltinKind {
+	case BuiltinJiraQuickAccess:
 		a.renderJiraQuickAccessModule(c, p, onClose)
+		return
+	case BuiltinJiraActivity:
+		a.renderJiraActivityModule(c, p, onClose)
+		return
+	case BuiltinJiraWeek:
+		a.renderJiraWeekModule(c, p, onClose)
 		return
 	}
 	t := c.Theme()
