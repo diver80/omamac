@@ -146,6 +146,9 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 	section(c, "cfg-vault", "Tresor",
 		"Suchbegriffe und Tokens liegen im macOS-Schlüsselbund. Panels erhalten sie als Umgebungsvariable – die KI sieht nur den Namen, nie den Wert.",
 		func() {
+			if a.Vault != nil {
+				storageNote(c, a.Vault.StorageErr, "Werte", "vault.json")
+			}
 			if a.Vault != nil && len(a.Vault.Entries) > 0 {
 				ui.Column(c).FillWidth().Radius(8).Border(1, t.Border).Background(t.Background).Children(func() {
 					for idx, entry := range a.Vault.Entries {
@@ -167,7 +170,7 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 
 			if jiraVars := a.Jira.CredentialCatalog(); len(jiraVars) > 0 {
 				ui.Column(c).FillWidth().Gap(4).Children(func() {
-					ui.Text(c, "Automatisch aus Jira Quick-Access (pflegen unter Jira → Instanzen):").FontSize(11.5).TextColor(t.TextMuted)
+					ui.Text(c, "Automatisch aus Jira Quick-Access (pflegen unter Einstellungen → Jira-Instanzen):").FontSize(11.5).TextColor(t.TextMuted)
 					ui.Column(c).FillWidth().Radius(8).Border(1, t.Border).Children(func() {
 						for idx, m := range jiraVars {
 							if idx > 0 {

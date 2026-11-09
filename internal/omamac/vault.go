@@ -13,11 +13,19 @@ import (
 	"github.com/egoist/mygo"
 )
 
+// keychainService held one Keychain item per vault value before 1.8.1; now only read to move them.
 const keychainService = "de.diver80.omamac.vault"
 
+// legacyVaultItems reads and deletes those old items; tests swap in a map.
+var legacyVaultItems interface {
+	Get(key string) ([]byte, error)
+	Delete(key string) error
+} = mygo.Secrets.Service(keychainService)
+
 // CredentialMeta describes a secret stored in the central OmaMac Vault.
-// The secret Value itself is stored in macOS Keychain (via mygo.Secrets) + 0600 local vault file,
-// and is NEVER sent to AI prompts—only Name and Description are exposed to the AI generator.
+// The secret Value itself is stored in the macOS Keychain (secrets.go) – in the 0600 vault file
+// only while the Keychain cannot be used – and is NEVER sent to AI prompts: the AI sees Name
+// and Description only.
 type CredentialMeta struct {
 	Name        string `json:"name"`        // Env var name, e.g. "JIRA_API_TOKEN", "IDEALO_MAX_PRICE"
 	Description string `json:"description"` // Human/AI description of what this credential is for
@@ -26,7 +34,7 @@ type CredentialMeta struct {
 
 type vaultStoreFile struct {
 	Entries []CredentialMeta  `json:"entries"`
-	Values  map[string]string `json:"values,omitempty"` // 0600 fallback when running in headless test without Keychain unlock
+	Values  map[string]string `json:"values,omitempty"` // only while the Keychain cannot be used
 }
 
 // Vault manages centralized credentials for AI agents and status panels.
@@ -36,7 +44,9 @@ type Vault struct {
 	FilePath string
 	Entries  []CredentialMeta
 	values   map[string]string
-	mu       sync.RWMutex
+	// StorageErr is why the values sit in the vault file instead of the Keychain ("" = Keychain).
+	StorageErr string
+	mu         sync.RWMutex
 }
 
 // DefaultVaultPath returns ~/.config/omamac/vault.json.
@@ -80,12 +90,19 @@ func LoadVault(path string) (*Vault, error) {
 		}
 	}
 
-	// Attempt to read from macOS Keychain first via mygo.Secrets
-	sec := mygo.Secrets.Service(keychainService)
+	// The Keychain item holds the values; one of the old per-value items (before 1.8.1) only
+	// counts where there is nothing else, and moves into the item with the save below.
 	for _, e := range v.Entries {
-		if raw, err := sec.Get(e.Name); err == nil && len(raw) > 0 {
-			v.values[e.Name] = string(raw)
+		if val, ok := secretStore.get("vault:" + e.Name); ok {
+			v.values[e.Name] = val
+		} else if _, ok := v.values[e.Name]; !ok {
+			if raw, err := legacyVaultItems.Get(e.Name); err == nil && len(raw) > 0 {
+				v.values[e.Name] = string(raw)
+			}
 		}
+	}
+	if len(sf.Values) > 0 {
+		_ = v.Save() // values from the file move into the Keychain
 	}
 	return v, nil
 }
@@ -104,9 +121,11 @@ func (v *Vault) saveLocked() error {
 	sort.Slice(v.Entries, func(i, j int) bool {
 		return v.Entries[i].Name < v.Entries[j].Name
 	})
-	sf := vaultStoreFile{
-		Entries: v.Entries,
-		Values:  v.values,
+	sf := vaultStoreFile{Entries: v.Entries}
+	v.StorageErr = ""
+	if err := secretStore.putAll("vault:", v.values); err != nil {
+		sf.Values = v.values // the Keychain failed: keep them in the 0600 file
+		v.StorageErr = err.Error()
 	}
 	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
@@ -143,9 +162,6 @@ func (v *Vault) Set(name, value, description string) error {
 		})
 	}
 	v.values[envKey] = value
-
-	// Store in macOS Keychain via mygo.Secrets (best-effort)
-	_ = mygo.Secrets.Service(keychainService).Set(envKey, []byte(value))
 	return v.saveLocked()
 }
 
@@ -162,7 +178,7 @@ func (v *Vault) Delete(name string) error {
 	}
 	v.Entries = next
 	delete(v.values, envKey)
-	_ = mygo.Secrets.Service(keychainService).Delete(envKey)
+	_ = legacyVaultItems.Delete(envKey) // an old per-value item (before 1.8.1)
 	return v.saveLocked()
 }
 

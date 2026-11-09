@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+
+- **Zugangsdaten im Schlüsselbund:** Die API-Tokens der Jira-Instanzen und die Werte des Tresors liegen jetzt im macOS-Schlüsselbund – zusammen in einem Eintrag („de.diver80.omamac“), damit macOS nach einem Update nur einmal um Zugriff bittet („Immer erlauben“). Bisher standen die Jira-Tokens und eine Kopie der Tresor-Werte im Klartext in `jira_instances.json` bzw. `vault.json` (nur für den Benutzer lesbar). Beim ersten Start werden sie übernommen und aus den Dateien entfernt. Nur wenn der Schlüsselbund nicht nutzbar ist, bleiben sie wie bisher in der Datei; die Einstellungen sagen dann, warum.
+- **Hinweise beim Hinzufügen:** „Neue Jira-Instanz“ erklärt Cloud-Token und Data-Center-PAT (mit Link zum Erstellen des Tokens) und wo er gespeichert wird; „Neues Panel“ weist auf die konfigurierbaren Jira-System-Module hin und darauf, dass ein KI-Panel seine Einstellungen im Skript trägt.
+
 ## 1.8.0
 
 - **Konfiguration je Panel für System-Module:** Jira Aktivität und Jira Woche speichern ihre Einstellungen im Panel selbst – welche Instanzen, je Instanz Projekte bzw. JQL, „Meine Tickets/Alle“ bzw. „Geändert/Erledigt/Fällig“. Bearbeiten im Hauptfenster unter der Vorschau („Konfiguration“) oder im Panel über ⚙️.

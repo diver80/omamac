@@ -37,6 +37,27 @@ func statusColors(t *ui.Theme, status string) (ui.Color, ui.Color) {
 	}
 }
 
+// infoBox is a quiet hint in a dialog or form: a tinted box around what fn builds.
+func infoBox(c *ui.Context, fn func()) {
+	t := c.Theme()
+	ui.Column(c).FillWidth().Padding(8, 10).Radius(8).Background(t.Accent.Alpha(0.08)).Border(1, t.Accent.Alpha(0.25)).Gap(4).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).Children(func() {
+			ui.Text(c, "ℹ︎").FontSize(12).TextColor(t.Accent)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(fn)
+		})
+	})
+}
+
+// storageNote says where secrets are kept: the Keychain, or – with the reason – a 0600 file.
+func storageNote(c *ui.Context, storageErr, what, file string) {
+	t := c.Theme()
+	if storageErr == "" {
+		ui.Text(c, "🔒 "+what+" liegen im macOS-Schlüsselbund (ein Eintrag „"+secretsService+"“).").FontSize(11).TextColor(t.TextMuted)
+		return
+	}
+	ui.Text(c, "⚠ "+what+" liegen in ~/.config/omamac/"+file+" (nur für dich lesbar), weil: "+storageErr).FontSize(11).TextColor(t.Warning)
+}
+
 // statusDot draws the small colored circle that stands for a status everywhere.
 func statusDot(c *ui.Context, status string) {
 	_, fg := statusColors(c.Theme(), status)

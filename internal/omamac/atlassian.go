@@ -123,6 +123,8 @@ type JiraModuleState struct {
 	InstCounts map[string]int
 	InstErrors map[string]string
 	LastSync   string
+	// StorageErr is why the API tokens sit in jira_instances.json instead of the Keychain ("" = Keychain).
+	StorageErr string
 
 	// Interactive UI state inside the module
 	ViewMode         int    // 0 = 📋 Liste, 1 = 🗂️ Board (3 Spalten), 2 = ⚙️ Instanzen & JQL
@@ -168,7 +170,18 @@ func (j *JiraModuleState) LoadOrImport() {
 	if raw, err := os.ReadFile(j.ConfigPath); err == nil {
 		var list []JiraInstanceConfig
 		if json.Unmarshal(raw, &list) == nil && len(list) > 0 {
+			inFile := false
+			for i := range list {
+				if list[i].APIToken != "" {
+					inFile = true
+				} else if tok, ok := secretStore.get("jira:" + list[i].ID); ok {
+					list[i].APIToken = tok
+				}
+			}
 			j.Instances = list
+			if inFile {
+				_ = j.Save() // tokens from the file (before 1.8.1) move into the Keychain
+			}
 			return
 		}
 	}
@@ -232,11 +245,28 @@ func (j *JiraModuleState) ImportFromJiraQuickAccess() int {
 	return len(out)
 }
 
+// Save writes the instances to jira_instances.json and their API tokens to the Keychain
+// (secrets.go); the file holds a token only while the Keychain cannot be used.
 func (j *JiraModuleState) Save() error {
 	if err := os.MkdirAll(filepath.Dir(j.ConfigPath), 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(j.Instances, "", "  ")
+	j.mu.RLock()
+	list := append([]JiraInstanceConfig(nil), j.Instances...)
+	j.mu.RUnlock()
+	tokens := make(map[string]string, len(list))
+	for _, inst := range list {
+		tokens[inst.ID] = inst.APIToken
+	}
+	j.StorageErr = ""
+	if err := secretStore.putAll("jira:", tokens); err != nil {
+		j.StorageErr = err.Error()
+	} else {
+		for i := range list {
+			list[i].APIToken = ""
+		}
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -973,6 +1003,7 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 	t := c.Theme()
 	j := a.Jira
+	storageNote(c, j.StorageErr, "API-Tokens", "jira_instances.json")
 	j.mu.RLock()
 	instCounts := make(map[string]int, len(j.InstCounts))
 	for k, v := range j.InstCounts {
@@ -1039,6 +1070,12 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 			ui.Column(c.Key(key+"-new-inst")).
 				FillWidth().Padding(8, 10).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).Gap(6).Children(func() {
 				ui.Text(c, "➕ Neue Jira-Instanz").FontSize(12).Bold()
+				infoBox(c, func() {
+					ui.Text(c, "Cloud: E-Mail des Atlassian-Kontos und ein API-Token. Data Center: E-Mail leer lassen und einen Personal Access Token eintragen. "+
+						"Der Token kommt in den macOS-Schlüsselbund, nie in eine Datei oder zur KI. Aus dem Namen wird $JIRA_<NAME>_URL/_EMAIL/_API_TOKEN für eigene Panels.").
+						FontSize(11).TextColor(t.TextMuted)
+					ui.Link(c.Key(key+"-token-link"), "API-Token bei Atlassian erstellen ↗", "https://id.atlassian.com/manage-profile/security/api-tokens").FontSize(11)
+				})
 				ui.Row(c).FillWidth().Gap(6).Children(func() {
 					ui.TextInput(c.Key(key+"-new-name"), &j.NewInstName).Placeholder("Name (z. B. Firma)").Grow(1)
 					ui.TextInput(c.Key(key+"-new-url"), &j.NewInstURL).Placeholder("https://firma.atlassian.net").Grow(2)

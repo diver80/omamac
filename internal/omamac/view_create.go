@@ -55,6 +55,12 @@ func (a *App) renderCreateDialog(c *ui.Context) {
 
 			a.renderImageAttachments(c, "create-images", &a.createImages)
 
+			infoBox(c, func() {
+				ui.Text(c, "Für Jira gibt es fertige System-Module: Quick-Access, Aktivität und Woche. Unter „Panels“ einschalten, im Hauptfenster unter der Vorschau konfigurieren und per „Duplizieren“ mehrfach nutzen, z. B. je Kunde. "+
+					"Ein KI-Panel trägt seine Einstellungen dagegen fest im Abfrage-Skript – ändern lässt es sich mit einem Satz an die KI.").
+					FontSize(11.5).TextColor(t.TextMuted)
+			})
+
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 				ui.Text(c, "Beispiele:").FontSize(11.5).TextColor(t.TextMuted)
 				for idx, ex := range createExamples {
