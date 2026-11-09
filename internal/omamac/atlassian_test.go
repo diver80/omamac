@@ -178,3 +178,44 @@ func TestLoadPanelsAddsBuiltinsToExistingInstall(t *testing.T) {
 		t.Fatalf("builtins missing after upgrade: %v", found)
 	}
 }
+
+// Jira instances offer their credentials to panels; the AI only ever sees names.
+func TestJiraCredentialsForPanels(t *testing.T) {
+	j := NewJiraModuleState(t.TempDir())
+	j.Instances = []JiraInstanceConfig{
+		{Name: "Kunde A", BaseURL: "https://kunde-a.atlassian.net/", Email: "me@example.com", APIToken: "tok-a"},
+		{Name: "kunde-a", BaseURL: "https://other.atlassian.net", Email: "me@example.com", APIToken: "tok-b"},
+		{Name: "", BaseURL: "https://acme.atlassian.net"},
+	}
+	env := strings.Join(j.CredentialEnv(), "\n")
+	for _, want := range []string{
+		"JIRA_KUNDE_A_URL=https://kunde-a.atlassian.net",
+		"JIRA_KUNDE_A_API_TOKEN=tok-a",
+		"JIRA_KUNDE_A_2_API_TOKEN=tok-b",
+		"JIRA_ACME_URL=https://acme.atlassian.net",
+	} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("env lacks %q:\n%s", want, env)
+		}
+	}
+
+	vault, err := LoadVault(filepath.Join(t.TempDir(), "vault.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault.values["JIRA_KUNDE_A_API_TOKEN"] = "from-vault"
+	vault.Entries = append(vault.Entries, CredentialMeta{Name: "JIRA_KUNDE_A_API_TOKEN", Description: "own"})
+
+	catalog := credentialCatalogText(vault, j)
+	if strings.Contains(catalog, "tok-") || !strings.Contains(catalog, "$JIRA_KUNDE_A_2_API_TOKEN") || strings.Count(catalog, "$JIRA_KUNDE_A_API_TOKEN ") != 1 {
+		t.Fatalf("catalog:\n%s", catalog)
+	}
+
+	p := &PanelSpec{ID: "t", Command: `echo "$JIRA_KUNDE_A_URL $JIRA_KUNDE_A_API_TOKEN"`}
+	if err := p.RunDataRefresh(context.Background(), panelEnv(vault, j)...); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.LastCommandOut, "https://kunde-a.atlassian.net from-vault") {
+		t.Fatalf("command saw %q; want the Jira URL and the vault's token", p.LastCommandOut)
+	}
+}

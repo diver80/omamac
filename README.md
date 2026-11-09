@@ -11,7 +11,7 @@ The app's interface is in German.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
 - **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
 - **Templates:** Add ready-made panels with a switch, or use one as the starting point for your own AI panel.
-- **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name.
+- **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name. The Jira Quick-Access instances add `$JIRA_<NAME>_URL`, `_EMAIL` and `_API_TOKEN` automatically.
 - **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
 - **Automatic updates** from the GitHub releases; `omamac -check <panel.json>` checks a panel and renders a PNG preview.
 

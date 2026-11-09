@@ -163,13 +163,15 @@ func NewApp(configPath string) (*App, error) {
 
 	aiEngine := NewAIEngine(cfg)
 	aiEngine.Vault = vault
+	jira := NewJiraModuleState(filepath.Dir(cfg.PanelsDir))
+	aiEngine.Jira = jira
 
 	a := &App{
 		ConfigPath:    configPath,
 		Config:        cfg,
 		Vault:         vault,
 		AI:            aiEngine,
-		Jira:          NewJiraModuleState(filepath.Dir(cfg.PanelsDir)),
+		Jira:          jira,
 		AgyStatus:     InspectAntigravityAuth(cfg),
 		activeTab:     TabOverview,
 		panels:        panels,
@@ -656,11 +658,7 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 	case BuiltinAtlassianStatus:
 		RefreshAtlassianStatusPanel(ctx, p)
 	default:
-		var env []string
-		if a.Vault != nil {
-			env = a.Vault.EnvSlice()
-		}
-		_ = p.RunDataRefresh(ctx, env...)
+		_ = p.RunDataRefresh(ctx, panelEnv(a.Vault, a.Jira)...)
 	}
 }
 
@@ -743,10 +741,7 @@ func (a *App) triggerPrompt1Create() {
 	asWidget := a.createPlaceIdx == 1
 	count := a.prompt1CountIdx + 1
 
-	var vaultEnv []string
-	if a.Vault != nil {
-		vaultEnv = a.Vault.EnvSlice()
-	}
+	vaultEnv := panelEnv(a.Vault, a.Jira)
 
 	imagePaths := append([]string(nil), a.createImages...)
 	a.busy = true
@@ -813,10 +808,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 	if target == nil || target.IsBuiltin || refinePrompt == "" || a.busy {
 		return
 	}
-	var vaultEnv []string
-	if a.Vault != nil {
-		vaultEnv = a.Vault.EnvSlice()
-	}
+	vaultEnv := panelEnv(a.Vault, a.Jira)
 
 	imagePaths := append([]string(nil), a.refineImages...)
 	a.busy = true

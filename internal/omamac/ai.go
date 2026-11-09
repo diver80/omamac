@@ -18,6 +18,7 @@ import (
 type AIEngine struct {
 	Config     *Config
 	Vault      *Vault
+	Jira       *JiraModuleState // its instances' credentials are offered to panels too
 	HTTPClient *http.Client
 }
 
@@ -198,6 +199,37 @@ func antigravityArgs(model, prompt string) []string {
 		args = append(args, "--model", model)
 	}
 	return append(args, "-p", prompt)
+}
+
+// credentials returns what panel commands get as environment variables – the
+// vault's entries and the Jira instances' credentials – and the catalog of their
+// names for the AI prompt. Vault entries win over Jira ones of the same name.
+func (e *AIEngine) credentials() (catalog string, env []string) {
+	return credentialCatalogText(e.Vault, e.Jira), panelEnv(e.Vault, e.Jira)
+}
+
+// panelEnv is the environment added to every panel command and action.
+func panelEnv(v *Vault, j *JiraModuleState) []string {
+	env := j.CredentialEnv()
+	return append(env, v.EnvSlice()...) // later duplicates win: the vault overrides
+}
+
+// credentialCatalogText lists the variable names and descriptions for the AI.
+func credentialCatalogText(v *Vault, j *JiraModuleState) string {
+	var b strings.Builder
+	if v != nil && v.AIPromptCatalog() != "None configured." {
+		b.WriteString(v.AIPromptCatalog())
+	}
+	for _, m := range j.CredentialCatalog() {
+		if v != nil && v.Get(m.Name) != "" {
+			continue // the vault's entry of that name is used
+		}
+		b.WriteString(fmt.Sprintf("- $%s : %s\n", m.Name, m.Description))
+	}
+	if b.Len() == 0 {
+		return "None configured."
+	}
+	return b.String()
 }
 
 // unreachableErr says which AI failed, naming the configured one when the call did not get that far.
@@ -395,12 +427,7 @@ func (e *AIEngine) GeneratePanels(ctx context.Context, userPrompt string, reques
 		count = 2
 	}
 
-	vaultCatalog := "None configured."
-	var vaultEnv []string
-	if e.Vault != nil {
-		vaultCatalog = e.Vault.AIPromptCatalog()
-		vaultEnv = e.Vault.EnvSlice()
-	}
+	vaultCatalog, vaultEnv := e.credentials()
 
 	sysPrompt := fmt.Sprintf(`You are the OmaMac Status Panel Generator for macOS (Omarchy-inspired desktop environment).
 Generate a JSON array of %d macOS status panel object(s) for the following user request:
@@ -492,12 +519,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 
 // RefinePanel executes Prompt 2 (or 3+): takes an existing PanelSpec and applies a natural-language refinement prompt.
 func (e *AIEngine) RefinePanel(ctx context.Context, existing *PanelSpec, refinePrompt string, images ...AIImage) (*PanelSpec, string, error) {
-	vaultCatalog := "None configured."
-	var vaultEnv []string
-	if e.Vault != nil {
-		vaultCatalog = e.Vault.AIPromptCatalog()
-		vaultEnv = e.Vault.EnvSlice()
-	}
+	vaultCatalog, vaultEnv := e.credentials()
 
 	currentJSON, _ := json.MarshalIndent(existing, "", "  ")
 	sysPrompt := fmt.Sprintf(`You are the OmaMac 2-Prompt Status Panel Refiner for macOS.

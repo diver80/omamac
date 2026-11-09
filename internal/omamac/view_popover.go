@@ -115,9 +115,7 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 func (a *App) runPanelAction(act PanelAction) {
 	if act.Command != "" {
 		cmd := exec.Command("/bin/zsh", "-c", act.Command)
-		if a.Vault != nil {
-			cmd.Env = append(cmd.Environ(), a.Vault.EnvSlice()...)
-		}
+		cmd.Env = append(cmd.Environ(), panelEnv(a.Vault, a.Jira)...)
 		if cmd.Start() == nil {
 			go func() { _ = cmd.Wait() }() // reap the process (no zombies)
 		}

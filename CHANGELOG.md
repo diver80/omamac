@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0
+
+- **Jira-Zugangsdaten für alle Panels:** Jede Instanz aus Jira Quick-Access stellt `$JIRA_<NAME>_URL`, `$JIRA_<NAME>_EMAIL` und `$JIRA_<NAME>_API_TOKEN` bereit (z. B. `$JIRA_HELVETIA_API_TOKEN`). Panels und Aktionen bekommen sie als Umgebungsvariablen, die KI kennt nur die Namen. Kein zweites Eintragen im Tresor mehr; ein Tresor-Eintrag gleichen Namens hat Vorrang. Die Liste steht unter Einstellungen → Tresor.
+
 ## 1.4.2
 
 - **Antwort der KI formatiert:** Das JSON wird eingerückt angezeigt – schon live, während die KI noch schreibt. Befehle und HTML in der Antwort erscheinen mit echten Zeilenumbrüchen statt `\n`. „Ausgabe kopieren“ liefert gültiges, eingerücktes JSON.

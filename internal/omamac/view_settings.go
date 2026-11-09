@@ -160,6 +160,23 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 				})
 			}
 
+			if jiraVars := a.Jira.CredentialCatalog(); len(jiraVars) > 0 {
+				ui.Column(c).FillWidth().Gap(4).Children(func() {
+					ui.Text(c, "Automatisch aus Jira Quick-Access (pflegen unter Jira → Instanzen):").FontSize(11.5).TextColor(t.TextMuted)
+					ui.Column(c).FillWidth().Radius(8).Border(1, t.Border).Children(func() {
+						for idx, m := range jiraVars {
+							if idx > 0 {
+								ui.Divider(c)
+							}
+							ui.Row(c.Key("vault-jira-"+m.Name)).FillWidth().Padding(6, 12).AlignItems(ui.Center).Gap(12).Children(func() {
+								ui.Text(c, "$"+m.Name).FontSize(12).Bold().TextColor(t.Accent.Alpha(0.8)).SingleLine()
+								ui.Text(c, m.Description).FontSize(11.5).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
+							})
+						}
+					})
+				})
+			}
+
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c.Key("vault-new-key"), &a.vaultNewKey).Placeholder("NAME").Width(180)
 				ui.TextInput(c.Key("vault-new-val"), &a.vaultNewVal).Password().Placeholder("Wert").Width(180)

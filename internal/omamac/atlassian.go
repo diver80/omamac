@@ -1051,3 +1051,62 @@ func minInt(a, b int) int {
 	}
 	return b
 }
+
+// jiraCredVar is one variable a Jira instance provides to panel commands.
+type jiraCredVar struct {
+	Name, Value, Description string
+}
+
+// credentialVars lists, per Jira instance, $JIRA_<NAME>_URL, _EMAIL and _API_TOKEN,
+// so panels can call the Jira and Atlassian REST APIs without a second copy of the
+// token in the vault. Instance names that normalize to the same name get _2, _3, ….
+func (j *JiraModuleState) credentialVars() []jiraCredVar {
+	if j == nil {
+		return nil
+	}
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	var out []jiraCredVar
+	used := map[string]int{}
+	for _, inst := range j.Instances {
+		if strings.TrimSpace(inst.BaseURL) == "" {
+			continue
+		}
+		host := strings.TrimPrefix(strings.TrimPrefix(strings.TrimRight(inst.BaseURL, "/"), "https://"), "http://")
+		name := NormalizeEnvVarName(inst.Name)
+		if name == "" {
+			name = NormalizeEnvVarName(strings.SplitN(host, ".", 2)[0])
+		}
+		prefix := "JIRA_" + name
+		if used[prefix]++; used[prefix] > 1 {
+			prefix = fmt.Sprintf("%s_%d", prefix, used[prefix])
+		}
+		label := fmt.Sprintf("Jira-Instanz „%s“ (%s)", inst.Name, host)
+		out = append(out, jiraCredVar{prefix + "_URL", strings.TrimRight(inst.BaseURL, "/"), label + ": Basis-URL für /rest/api/3/…"})
+		if inst.Email != "" {
+			out = append(out, jiraCredVar{prefix + "_EMAIL", inst.Email, label + ": E-Mail für Basic Auth"})
+		}
+		if inst.APIToken != "" {
+			out = append(out, jiraCredVar{prefix + "_API_TOKEN", inst.APIToken, label + ": Atlassian-API-Token für Basic Auth (E-Mail:Token)"})
+		}
+	}
+	return out
+}
+
+// CredentialEnv returns the Jira instances' variables as KEY=VALUE pairs.
+func (j *JiraModuleState) CredentialEnv() []string {
+	var env []string
+	for _, v := range j.credentialVars() {
+		env = append(env, v.Name+"="+v.Value)
+	}
+	return env
+}
+
+// CredentialCatalog describes the Jira variables for the AI – names and purpose, never values.
+func (j *JiraModuleState) CredentialCatalog() []CredentialMeta {
+	var metas []CredentialMeta
+	for _, v := range j.credentialVars() {
+		metas = append(metas, CredentialMeta{Name: v.Name, Description: v.Description})
+	}
+	return metas
+}
