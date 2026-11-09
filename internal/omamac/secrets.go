@@ -48,12 +48,12 @@ func (s *secretBlob) load() error {
 	case errors.Is(err, mygo.ErrSecretNotFound):
 		return nil
 	case err != nil:
-		s.loadErr = fmt.Errorf("Schlüsselbund nicht lesbar: %w", err)
+		s.loadErr = fmt.Errorf(T("Schlüsselbund nicht lesbar: %w"), err)
 		return s.loadErr
 	}
 	if err := json.Unmarshal(raw, &s.data); err != nil {
 		s.data = map[string]string{}
-		s.loadErr = fmt.Errorf("Schlüsselbund-Eintrag unlesbar: %w", err)
+		s.loadErr = fmt.Errorf(T("Schlüsselbund-Eintrag unlesbar: %w"), err)
 	}
 	return s.loadErr
 }
@@ -97,10 +97,10 @@ func (s *secretBlob) putAll(prefix string, values map[string]string) error {
 		return err
 	}
 	if len(raw) > mygo.MaxSecretSize {
-		return fmt.Errorf("Schlüsselbund-Eintrag zu groß (%d Bytes)", len(raw))
+		return fmt.Errorf(T("Schlüsselbund-Eintrag zu groß (%d Bytes)"), len(raw))
 	}
 	if err := s.backend.Set(secretsKey, raw); err != nil {
-		return fmt.Errorf("Schlüsselbund nicht beschreibbar: %w", err)
+		return fmt.Errorf(T("Schlüsselbund nicht beschreibbar: %w"), err)
 	}
 	s.data = next
 	return nil

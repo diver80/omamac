@@ -169,19 +169,19 @@ func syncActivityPanel(p *PanelSpec, all []JiraActivity, asked, failed int) {
 		}
 	}
 	p.LastUpdated = now.Format("15:04:05")
-	p.BadgeText = fmt.Sprintf("%d heute", today)
+	p.BadgeText = fmt.Sprintf(T("%d heute"), today)
 	p.Status = "ok"
 	switch {
 	case asked == 0:
-		p.BadgeText, p.Status = "keine Instanz", "info"
+		p.BadgeText, p.Status = T("keine Instanz"), "info"
 	case failed == asked:
-		p.BadgeText, p.Status = "Abruf ⚠", "crit"
+		p.BadgeText, p.Status = T("Abruf ⚠"), "crit"
 	case failed > 0:
 		p.Status = "warn"
 	}
 	p.Metrics = []PanelMetric{
-		{Label: "Heute", Value: fmt.Sprint(today), Unit: "Einträge", Status: "info"},
-		{Label: "Letzte Stunde", Value: fmt.Sprint(lastHour), Unit: fmt.Sprintf("%d/%d Instanzen", asked-failed, asked), Status: p.Status},
+		{Label: T("Heute"), Value: fmt.Sprint(today), Unit: T("Einträge"), Status: "info"},
+		{Label: T("Letzte Stunde"), Value: fmt.Sprint(lastHour), Unit: fmt.Sprintf(T("%d/%d Instanzen"), asked-failed, asked), Status: p.Status},
 	}
 	var rows []PanelRow
 	for _, e := range all {
@@ -292,7 +292,7 @@ func plainText(s string) string {
 func parseActivityFeed(body []byte, inst JiraInstanceConfig) ([]JiraActivity, error) {
 	var feed atomFeed
 	if err := xml.Unmarshal(body, &feed); err != nil {
-		return nil, fmt.Errorf("Activity-Feed unlesbar: %w", err)
+		return nil, fmt.Errorf(T("Activity-Feed unlesbar: %w"), err)
 	}
 	base := strings.TrimRight(strings.TrimSpace(inst.BaseURL), "/")
 	out := make([]JiraActivity, 0, len(feed.Entries))
@@ -358,13 +358,14 @@ func dayLabel(t time.Time) string {
 	day := time.Date(ty, tm, td, 0, 0, 0, 0, time.Local)
 	switch {
 	case day.Equal(today):
-		return "Heute"
+		return T("Heute")
 	case day.Equal(today.AddDate(0, 0, -1)):
-		return "Gestern"
+		return T("Gestern")
 	}
-	return weekdayShort[(int(t.Weekday())+6)%7] + ", " + t.Format("02.01.")
+	return T(weekdayShort[(int(t.Weekday())+6)%7]) + ", " + t.Format(T("02.01."))
 }
 
+// German short names; say them with T.
 var weekdayShort = [7]string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
 
 // renderJiraActivityModule shows the activity stream of all instances, newest first and grouped by day.
@@ -393,16 +394,16 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
-			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
+			ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
-			if ui.Button(c.Key("act-refresh"), "↻").Tooltip("Activity Streams aller Instanzen neu laden").Clicked() {
+			if ui.Button(c.Key("act-refresh"), "↻").Tooltip(T("Activity Streams aller Instanzen neu laden")).Clicked() {
 				a.refreshPanelAsync(p, "")
 			}
 			closeButton(c, "act-close", onClose)
 		})
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			instancePill(c, "act-inst-all", fmt.Sprintf("Alle Instanzen (%d)", total), st.FilterInst == "", func() { st.FilterInst = "" })
+			instancePill(c, "act-inst-all", fmt.Sprintf(T("Alle Instanzen (%d)"), total), st.FilterInst == "", func() { st.FilterInst = "" })
 			for _, inst := range sources {
 				id := inst.ID
 				n, has := perInst[id]
@@ -424,11 +425,11 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 			}
 			ui.Spacer(c)
 			if lastSync != "" {
-				ui.Text(c, "Stand "+lastSync).FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, T("Stand ")+lastSync).FontSize(10.5).TextColor(t.TextMuted)
 			}
 			scope := activityScope(p)
-			if ui.Segmented(c.Key("act-scope"), &scope, "Meine Tickets", "Alle").
-				Tooltip("Meine Tickets: zugewiesen, gemeldet oder beobachtet und in den letzten 14 Tagen geändert").Changed() {
+			if ui.Segmented(c.Key("act-scope"), &scope, T("Meine Tickets"), T("Alle")).
+				Tooltip(T("Meine Tickets: zugewiesen, gemeldet oder beobachtet und in den letzten 14 Tagen geändert")).Changed() {
 				p.moduleConfig().Scope = activityScopes[scope]
 				a.saveModuleConfig(p)
 				j.resetActivity(p.ID)
@@ -442,16 +443,16 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 			return
 		}
 
-		ui.TextInput(c.Key("act-search"), &st.Search).Placeholder("Filtern nach Person, Ticket, Text …").FillWidth()
+		ui.TextInput(c.Key("act-search"), &st.Search).Placeholder(T("Filtern nach Person, Ticket, Text …")).FillWidth()
 
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				if len(sources) == 0 {
-					ui.Text(c, "Keine Jira-Instanz für diesen Stream – unter ⚙️ auswählen.").FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, T("Keine Jira-Instanz für diesen Stream – unter ⚙️ auswählen.")).FontSize(12).TextColor(t.TextMuted)
 				} else if len(entries) == 0 {
-					msg := "Keine Aktivität für diesen Filter."
+					msg := T("Keine Aktivität für diesen Filter.")
 					if lastSync == "" {
-						msg = "Lade Activity Streams …"
+						msg = T("Lade Activity Streams …")
 					}
 					ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted)
 				}
@@ -474,7 +475,7 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 							ui.Text(c, ent.Action).FontSize(11.5).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
 							pillBadge(c, ent.InstanceName, t.Border.Alpha(0.6), t.TextMuted)
 							if ent.URL != "" {
-								ui.Link(c.Key(fmt.Sprintf("act-ext-%d", idx)), "↗", ent.URL).FontSize(12).Tooltip("Im Browser öffnen")
+								ui.Link(c.Key(fmt.Sprintf("act-ext-%d", idx)), "↗", ent.URL).FontSize(12).Tooltip(T("Im Browser öffnen"))
 							}
 						})
 						if ent.IssueTitle != "" {

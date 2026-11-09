@@ -141,7 +141,6 @@ type App struct {
 }
 
 var (
-	panelTypeLabels  = []string{"Native GPU (mygo/ui)", "Web-Design (HTML/CSS)", "Beide Varianten"}
 	panelCountLabels = []string{"1 Panel", "2 Panels", "3 Panels", "4 Panels"}
 	geminiModelList  = []string{
 		"gemini-4-argon-medium",
@@ -277,9 +276,9 @@ func (a *App) setAllPanelsEnabled(enabled bool) {
 	}
 	a.syncAllPanelRuntimes()
 	if enabled {
-		a.toast("Alle Panels in der macOS-Menüleiste aktiviert")
+		a.toast(T("Alle Panels in der macOS-Menüleiste aktiviert"))
 	} else {
-		a.toast("Alle Panels in der macOS-Menüleiste deaktiviert")
+		a.toast(T("Alle Panels in der macOS-Menüleiste deaktiviert"))
 	}
 }
 
@@ -291,7 +290,7 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 
 	// 1. Create the floating Wal-Panel (hidden initially, summoned via global shortcut or tray)
 	a.walWin = mygo.NewWindow(mygo.WindowOptions{
-		Title:             "OmaMac Schnellstart",
+		Title:             T("OmaMac Schnellstart"),
 		Width:             680,
 		Height:            480,
 		Frameless:         true,
@@ -351,7 +350,7 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	if tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:      "omamac-master-tray",
 		Title:   "⌘ OmaMac",
-		ToolTip: "OmaMac – Übersicht & Wal-Panel öffnen",
+		ToolTip: T("OmaMac – Übersicht & Wal-Panel öffnen"),
 	}); err == nil {
 		a.mainTray = tray
 		tray.OnClick(func() {
@@ -411,7 +410,7 @@ func (a *App) syncAllPanelRuntimes() {
 				if t, err := mygo.NewTray(mygo.TrayOptions{
 					ID:      "omamac-panel-" + p.ID,
 					Title:   p.TrayLabel(),
-					ToolTip: p.Title + " — " + p.Subtitle,
+					ToolTip: T(p.Title) + " — " + T(p.Subtitle),
 				}); err == nil {
 					rt.tray = t
 					t.OnClick(func() {
@@ -420,7 +419,7 @@ func (a *App) syncAllPanelRuntimes() {
 				}
 			} else {
 				rt.tray.SetTitle(p.TrayLabel())
-				rt.tray.SetToolTip(p.Title + " — " + p.Subtitle)
+				rt.tray.SetToolTip(T(p.Title) + " — " + T(p.Subtitle))
 			}
 		} else if rt.tray != nil {
 			if rt.flyout != nil {
@@ -593,7 +592,7 @@ func (a *App) unpinFloatingWidget(panelID string) {
 	if rt, ok := a.runtimes[panelID]; ok {
 		rt.floating = nil // the window is closing itself
 	}
-	a.toast("Widget „" + p.Title + "“ geschlossen – über den Schalter „Widget“ wieder anpinnen")
+	a.toast(T("Widget „") + p.Title + T("“ geschlossen – über den Schalter „Widget“ wieder anpinnen"))
 	a.updateUI(func() {})
 }
 
@@ -742,7 +741,7 @@ func (a *App) updateUI(fn func()) {
 // errText describes a failed AI call for the status bar.
 func errText(err error) string {
 	if err == nil {
-		return "die KI hat kein Ergebnis geliefert."
+		return T("die KI hat kein Ergebnis geliefert.")
 	}
 	return err.Error()
 }
@@ -782,8 +781,8 @@ func (a *App) triggerPrompt1Create() {
 
 	imagePaths := append([]string(nil), a.createImages...)
 	a.busy = true
-	a.busyLabel = "KI erstellt das Panel …"
-	ctx, run := a.startAIRun("Neues Panel: " + truncateStr(prompt, 60))
+	a.busyLabel = T("KI erstellt das Panel …")
+	ctx, run := a.startAIRun(T("Neues Panel: ") + truncateStr(prompt, 60))
 	go func() {
 		var created []*PanelSpec
 		var providerUsed string
@@ -792,7 +791,7 @@ func (a *App) triggerPrompt1Create() {
 			created, providerUsed, err = a.AI.GeneratePanels(ctx, prompt, reqType, count, images...)
 		}
 		if err == nil && len(created) == 0 {
-			err = errors.New("die KI hat kein Panel geliefert")
+			err = errors.New(T("die KI hat kein Panel geliefert"))
 		}
 		checks := make([]error, len(created))
 		for i, p := range created {
@@ -801,7 +800,7 @@ func (a *App) triggerPrompt1Create() {
 				p.Kind = "widget"
 				p.PinnedFloating = true
 			}
-			progressStep(ctx, "Prüfe „%s“ …", p.Title)
+			progressStep(ctx, T("Prüfe „%s“ …"), p.Title)
 			_, checks[i] = p.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
@@ -812,11 +811,11 @@ func (a *App) triggerPrompt1Create() {
 					return
 				}
 				a.statusErr = true
-				a.statusMsg = "Kein Panel erstellt — " + errText(err)
+				a.statusMsg = T("Kein Panel erstellt — ") + errText(err)
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
-			run.setResult("erstellt", created, checks)
+			run.setResult(T("erstellt"), created, checks)
 			a.createImages = nil
 			for _, p := range created {
 				_ = SavePanel(a.Config.PanelsDir, p)
@@ -830,9 +829,9 @@ func (a *App) triggerPrompt1Create() {
 			switch {
 			case a.showAIRun: // the open dialog shows the result
 			case len(created) == 1:
-				a.toast(fmt.Sprintf("„%s“ erstellt (%s)", created[0].Title, providerUsed))
+				a.toast(fmt.Sprintf(T("„%s“ erstellt (%s)"), created[0].Title, providerUsed))
 			default:
-				a.toast(fmt.Sprintf("%d Panels erstellt (%s)", len(created), providerUsed))
+				a.toast(fmt.Sprintf(T("%d Panels erstellt (%s)"), len(created), providerUsed))
 			}
 		})
 	}()
@@ -849,8 +848,8 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 
 	imagePaths := append([]string(nil), a.refineImages...)
 	a.busy = true
-	a.busyLabel = fmt.Sprintf("KI passt „%s“ an …", target.Title)
-	ctx, run := a.startAIRun(fmt.Sprintf("„%s“ anpassen", target.Title))
+	a.busyLabel = fmt.Sprintf(T("KI passt „%s“ an …"), target.Title)
+	ctx, run := a.startAIRun(fmt.Sprintf(T("„%s“ anpassen"), target.Title))
 	go func() {
 		var updated *PanelSpec
 		var providerUsed string
@@ -859,11 +858,11 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			updated, providerUsed, err = a.AI.RefinePanel(ctx, target, refinePrompt, images...)
 		}
 		if err == nil && updated == nil {
-			err = errors.New("die KI hat kein Panel geliefert")
+			err = errors.New(T("die KI hat kein Panel geliefert"))
 		}
 		var checkErr error
 		if updated != nil {
-			progressStep(ctx, "Prüfe „%s“ …", updated.Title)
+			progressStep(ctx, T("Prüfe „%s“ …"), updated.Title)
 			_, checkErr = updated.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
@@ -874,11 +873,11 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 					return
 				}
 				a.statusErr = true
-				a.statusMsg = "Panel unverändert — " + errText(err)
+				a.statusMsg = T("Panel unverändert — ") + errText(err)
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
-			run.setResult("angepasst", []*PanelSpec{updated}, []error{checkErr})
+			run.setResult(T("angepasst"), []*PanelSpec{updated}, []error{checkErr})
 			replaced := false
 			for i, p := range a.panels {
 				if p.ID == panelID {
@@ -901,7 +900,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			a.refineImages = nil
 			a.clearStatus()
 			if !a.showAIRun {
-				a.toast(fmt.Sprintf("„%s“ angepasst (%s)", updated.Title, providerUsed))
+				a.toast(fmt.Sprintf(T("„%s“ angepasst (%s)"), updated.Title, providerUsed))
 			}
 		})
 	}()

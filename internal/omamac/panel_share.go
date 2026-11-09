@@ -178,7 +178,7 @@ func BuildShareBundle(panels []*PanelSpec, env []string, catalog []CredentialMet
 			continue
 		}
 		if chk := CheckForSharing(p, env, withHistory); chk.Blocked() {
-			return nil, fmt.Errorf("„%s“ enthält einen Zugangswert im Klartext – ersetze ihn durch eine $VARIABLE (z. B. per „Mit KI anpassen“)", p.Title)
+			return nil, fmt.Errorf(T("„%s“ enthält einen Zugangswert im Klartext – ersetze ihn durch eine $VARIABLE (z. B. per „Mit KI anpassen“)"), p.Title)
 		}
 		exp := sanitizeForShare(p, withHistory)
 		b.Panels = append(b.Panels, exp)
@@ -190,7 +190,7 @@ func BuildShareBundle(panels []*PanelSpec, env []string, catalog []CredentialMet
 		}
 	}
 	if len(b.Panels) == 0 {
-		return nil, errors.New("keine eigenen Panels zum Exportieren (System-Module werden nicht exportiert)")
+		return nil, errors.New(T("keine eigenen Panels zum Exportieren (System-Module werden nicht exportiert)"))
 	}
 	sort.Slice(b.Variables, func(i, j int) bool { return b.Variables[i].Name < b.Variables[j].Name })
 	return b, nil
@@ -207,17 +207,17 @@ func (b *ShareBundle) Marshal() []byte {
 func ParseShareBundle(data []byte) (*ShareBundle, error) {
 	text := strings.TrimSpace(string(data))
 	if text == "" {
-		return nil, errors.New("leer – nichts zum Importieren")
+		return nil, errors.New(T("leer – nichts zum Importieren"))
 	}
 	var b ShareBundle
 	if err := json.Unmarshal([]byte(text), &b); err == nil && b.Format == shareFormatName {
 		if b.Version > shareFormatVer {
-			return nil, fmt.Errorf("die Datei stammt von einer neueren OmaMac-Version (%s) – bitte OmaMac aktualisieren", b.AppVersion)
+			return nil, fmt.Errorf(T("die Datei stammt von einer neueren OmaMac-Version (%s) – bitte OmaMac aktualisieren"), b.AppVersion)
 		}
 	} else {
 		panels, perr := extractPanelsFromText(text)
 		if perr != nil || len(panels) == 0 {
-			return nil, errors.New("kein OmaMac-Panel erkannt – erwartet wird eine .omamac-Datei oder Panel-JSON")
+			return nil, errors.New(T("kein OmaMac-Panel erkannt – erwartet wird eine .omamac-Datei oder Panel-JSON"))
 		}
 		b = ShareBundle{Format: shareFormatName, Version: shareFormatVer, Panels: panels}
 	}
@@ -232,7 +232,7 @@ func ParseShareBundle(data []byte) (*ShareBundle, error) {
 		ok = append(ok, p)
 	}
 	if len(ok) == 0 {
-		return nil, errors.New("die Datei enthält keine Panels")
+		return nil, errors.New(T("die Datei enthält keine Panels"))
 	}
 	b.Panels = ok
 	if len(b.Variables) == 0 { // bare panel JSON: work them out

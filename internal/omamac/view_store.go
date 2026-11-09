@@ -10,7 +10,7 @@ import (
 func (a *App) renderTabStore(c *ui.Context) {
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Padding(20).Gap(14).Children(func() {
-			pageHeader(c, "Vorlagen", "Fertige Panels per Schalter hinzufügen – oder als Ausgangspunkt für ein eigenes KI-Panel.", nil)
+			pageHeader(c, T("Vorlagen"), T("Fertige Panels per Schalter hinzufügen – oder als Ausgangspunkt für ein eigenes KI-Panel."), nil)
 			a.renderStoreCatalogList(c, "tab")
 		})
 	})
@@ -51,8 +51,8 @@ func (a *App) renderStoreCatalogList(c *ui.Context, keyPrefix string) {
 					ui.Text(c, it.Category+" · "+it.Subtitle).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
 				})
 
-				if ui.Button(c.Key(fmt.Sprintf("%s-store-prompt-%d", keyPrefix, idx)), "Anpassen …").
-					Tooltip("Als Ausgangspunkt für ein eigenes KI-Panel verwenden").Clicked() {
+				if ui.Button(c.Key(fmt.Sprintf("%s-store-prompt-%d", keyPrefix, idx)), T("Anpassen …")).
+					Tooltip(T("Als Ausgangspunkt für ein eigenes KI-Panel verwenden")).Clicked() {
 					a.openCreate(it.Prompt)
 				}
 
@@ -69,9 +69,9 @@ func (a *App) renderStoreCatalogList(c *ui.Context, keyPrefix string) {
 func (a *App) setStoreItemEnabled(it StoreCategoryItem, existing *PanelSpec, enabled bool) {
 	if existing != nil {
 		existing.Enabled = enabled
-		msg := "„" + existing.Title + "“ aus der Menüleiste genommen"
+		msg := T("„") + existing.Title + T("“ aus der Menüleiste genommen")
 		if enabled {
-			msg = "„" + existing.Title + "“ in der Menüleiste"
+			msg = T("„") + existing.Title + T("“ in der Menüleiste")
 		}
 		a.persistPanelToggle(existing, msg)
 		return
@@ -85,5 +85,5 @@ func (a *App) setStoreItemEnabled(it StoreCategoryItem, existing *PanelSpec, ena
 	a.panels = append(a.panels, &clone)
 	a.selectPanel(clone.ID)
 	a.syncAllPanelRuntimes()
-	a.toast("„" + clone.Title + "“ hinzugefügt")
+	a.toast(T("„") + clone.Title + T("“ hinzugefügt"))
 }

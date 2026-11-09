@@ -43,49 +43,49 @@ func (a *App) renderCreateDialog(c *ui.Context) {
 		}
 		dlg.Children(func() {
 			ui.Column(c).FillWidth().Gap(4).Children(func() {
-				ui.Text(c, "Neues Panel").FontSize(18).Bold()
-				ui.Text(c, "Beschreibe in einem Satz, was angezeigt werden soll. Variablen aus dem Tresor ($NAME) werden eingebunden. Ein Screenshot oder Mockup hilft der KI oft mehr als viele Worte.").
+				ui.Text(c, T("Neues Panel")).FontSize(18).Bold()
+				ui.Text(c, T("Beschreibe in einem Satz, was angezeigt werden soll. Variablen aus dem Tresor ($NAME) werden eingebunden. Ein Screenshot oder Mockup hilft der KI oft mehr als viele Worte.")).
 					FontSize(12).TextColor(t.TextMuted)
 			})
 
 			ui.TextArea(c.Key("create-prompt"), &a.prompt1Text).AutoFocus().
-				Placeholder("z. B. „Zeige die aktuellen 3D-Drucker-Deals von mydealz und warne, wenn der Idealo-Preis unter $IDEALO_TARGET_PRICE fällt“").
+				Placeholder(T("z. B. „Zeige die aktuellen 3D-Drucker-Deals von mydealz und warne, wenn der Idealo-Preis unter $IDEALO_TARGET_PRICE fällt“")).
 				Height(96).FillWidth().
 				OnPaste(func(text string) bool { return text == "" && a.pasteImage(&a.createImages) })
 
 			a.renderImageAttachments(c, "create-images", &a.createImages)
 
 			infoBox(c, func() {
-				ui.Text(c, "Für Jira gibt es fertige System-Module: Quick-Access, Aktivität und Woche. Unter „Panels“ einschalten, im Hauptfenster unter der Vorschau konfigurieren und per „Duplizieren“ mehrfach nutzen, z. B. je Kunde. "+
-					"Ein KI-Panel trägt seine Einstellungen dagegen fest im Abfrage-Skript – ändern lässt es sich mit einem Satz an die KI.").
+				ui.Text(c, T("Für Jira gibt es fertige System-Module: Quick-Access, Aktivität und Woche. Unter „Panels“ einschalten, im Hauptfenster unter der Vorschau konfigurieren und per „Duplizieren“ mehrfach nutzen, z. B. je Kunde. ")+
+					T("Ein KI-Panel trägt seine Einstellungen dagegen fest im Abfrage-Skript – ändern lässt es sich mit einem Satz an die KI.")).
 					FontSize(11.5).TextColor(t.TextMuted)
 			})
 
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
-				ui.Text(c, "Beispiele:").FontSize(11.5).TextColor(t.TextMuted)
+				ui.Text(c, T("Beispiele:")).FontSize(11.5).TextColor(t.TextMuted)
 				for idx, ex := range createExamples {
-					if textButton(c, fmt.Sprintf("create-ex-%d", idx), ex.label) {
+					if textButton(c, fmt.Sprintf("create-ex-%d", idx), T(ex.label)) {
 						a.prompt1Text = ex.prompt
 					}
 				}
 			})
 
 			ui.Form(c, func() {
-				ui.Field(c, "Anzeigen in", func() {
+				ui.Field(c, T("Anzeigen in"), func() {
 					ui.Row(c).Children(func() {
-						ui.Segmented(c.Key("create-place"), &a.createPlaceIdx, "Menüleiste", "Menüleiste und als Widget")
+						ui.Segmented(c.Key("create-place"), &a.createPlaceIdx, T("Menüleiste"), T("Menüleiste und als Widget"))
 					})
 				})
 			})
 
-			ui.Collapsible(c, "Weitere Optionen", &a.showCreateMore, func() {
+			ui.Collapsible(c, T("Weitere Optionen"), &a.showCreateMore, func() {
 				ui.Form(c, func() {
-					ui.Field(c, "Darstellung", func() {
+					ui.Field(c, T("Darstellung"), func() {
 						ui.Row(c).Children(func() {
-							ui.Segmented(c.Key("create-type"), &a.prompt1TypeIdx, "Native", "HTML", "Beide")
+							ui.Segmented(c.Key("create-type"), &a.prompt1TypeIdx, "Native", "HTML", T("Beide"))
 						})
 					})
-					ui.Field(c, "Anzahl", func() {
+					ui.Field(c, T("Anzahl"), func() {
 						ui.Row(c).Children(func() {
 							ui.Segmented(c.Key("create-count"), &a.prompt1CountIdx, panelCountLabels...)
 						})
@@ -94,11 +94,11 @@ func (a *App) renderCreateDialog(c *ui.Context) {
 			})
 
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "KI: "+a.AI.ActiveProviderSummary()).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
-				if ui.Button(c.Key("create-cancel"), "Abbrechen").Clicked() {
+				ui.Text(c, T("KI: ")+a.AI.ActiveProviderSummary()).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
+				if ui.Button(c.Key("create-cancel"), T("Abbrechen")).Clicked() {
 					a.showCreate = false
 				}
-				if ui.PrimaryButton(c.Key("create-submit"), "Erstellen").
+				if ui.PrimaryButton(c.Key("create-submit"), T("Erstellen")).
 					Disabled(a.busy || strings.TrimSpace(a.prompt1Text) == "").Clicked() {
 					a.showCreate = false
 					a.triggerPrompt1Create()

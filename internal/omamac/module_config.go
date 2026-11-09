@@ -119,7 +119,7 @@ func weekField(p *PanelSpec) int {
 // saveModuleConfig stores the panel after a change of its settings.
 func (a *App) saveModuleConfig(p *PanelSpec) {
 	if err := SavePanel(a.Config.PanelsDir, p); err != nil {
-		a.toast("Speichern fehlgeschlagen: " + err.Error())
+		a.toast(T("Speichern fehlgeschlagen: ") + err.Error())
 	}
 }
 
@@ -132,18 +132,18 @@ func (a *App) renderModuleConfig(c *ui.Context, p *PanelSpec) {
 		return
 	}
 	cfg := p.moduleConfig()
-	hint, placeholder := "Projekte je Instanz, z. B. „ABC, XYZ“ – leer = alle Projekte.", "alle Projekte"
+	hint, placeholder := T("Projekte je Instanz, z. B. „ABC, XYZ“ – leer = alle Projekte."), T("alle Projekte")
 	reload := func() {
 		j.resetActivity(p.ID)
 		a.refreshPanelAsync(p, "")
 	}
 	if p.BuiltinKind == BuiltinJiraWeek {
-		hint, placeholder = "JQL je Instanz, ohne Datum – OmaMac grenzt auf die Woche ein.", defaultWeekJQL
+		hint, placeholder = T("JQL je Instanz, ohne Datum – OmaMac grenzt auf die Woche ein."), defaultWeekJQL
 		reload = func() { a.reloadWeek(p) }
 	}
 	key := "mc-" + p.ID
 	ui.Column(c.Key(key)).FillWidth().Gap(6).Children(func() {
-		ui.Text(c, "Instanzen: "+hint).FontSize(11).TextColor(t.TextMuted)
+		ui.Text(c, T("Instanzen: ")+hint).FontSize(11).TextColor(t.TextMuted)
 		for _, inst := range j.Instances {
 			cfg.sourcePtr(inst.ID) // all first: the pointers below stay valid
 		}
@@ -170,18 +170,18 @@ func (a *App) renderModuleConfig(c *ui.Context, p *PanelSpec) {
 			})
 		}
 		if shown == 0 {
-			ui.Text(c, "Noch keine Jira-Instanz eingerichtet.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, T("Noch keine Jira-Instanz eingerichtet.")).FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-			if ui.Button(c.Key(key+"-manage"), "Instanzen verwalten …").
-				Tooltip("Einstellungen → Jira-Instanzen: anlegen, Zugänge ändern, für alle Module abschalten").Clicked() {
+			if ui.Button(c.Key(key+"-manage"), T("Instanzen verwalten …")).
+				Tooltip(T("Einstellungen → Jira-Instanzen: anlegen, Zugänge ändern, für alle Module abschalten")).Clicked() {
 				a.openJiraSettings()
 			}
 			ui.Spacer(c)
-			if ui.PrimaryButton(c.Key(key+"-apply"), "Übernehmen").Tooltip("Filter speichern und neu laden").Clicked() {
+			if ui.PrimaryButton(c.Key(key+"-apply"), T("Übernehmen")).Tooltip(T("Filter speichern und neu laden")).Clicked() {
 				a.saveModuleConfig(p)
 				reload()
-				a.toast("„" + p.Title + "“: Einstellungen gespeichert")
+				a.toast(T("„") + p.Title + T("“: Einstellungen gespeichert"))
 			}
 		})
 	})

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.0
+
+- **English UI:** OmaMac now speaks English and German. It follows the macOS language (English for everyone who reads neither); Settings → General → Language switches between System, Deutsch and English at once. Delivered panels and templates show their names in the chosen language, and the AI writes new panels' texts in it.
+- The README's screenshots are English now; the German ones are in `docs/omamac-screenshots/de`.
+- Command line help (`omamac -h`) is English.
+
 ## 1.8.2
 
 - Die installierte Version steht jetzt im Hauptfenster oben links neben „OmaMac“ (Tooltip: Updates unter Einstellungen → Allgemein).

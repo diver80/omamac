@@ -79,13 +79,13 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 func (e *AIEngine) CompleteRequest(ctx context.Context, prompt string, images []AIImage) (string, string, error) {
 	start := time.Now()
 	if len(images) > 0 {
-		progressStep(ctx, "Anfrage an %s gesendet (%d Zeichen, %d Bild(er))", e.ActiveProviderSummary(), len(prompt), len(images))
+		progressStep(ctx, T("Anfrage an %s gesendet (%d Zeichen, %d Bild(er))"), e.ActiveProviderSummary(), len(prompt), len(images))
 	} else {
-		progressStep(ctx, "Anfrage an %s gesendet (%d Zeichen)", e.ActiveProviderSummary(), len(prompt))
+		progressStep(ctx, T("Anfrage an %s gesendet (%d Zeichen)"), e.ActiveProviderSummary(), len(prompt))
 	}
 	out, label, err := e.complete(ctx, prompt, images)
 	if err == nil {
-		progressStep(ctx, "Antwort erhalten nach %d s (%d Zeichen)", int(time.Since(start).Seconds()), len(out))
+		progressStep(ctx, T("Antwort erhalten nach %d s (%d Zeichen)"), int(time.Since(start).Seconds()), len(out))
 	}
 	return out, label, err
 }
@@ -240,7 +240,7 @@ func (e *AIEngine) unreachableErr(providerLabel string, err error) error {
 	if providerLabel == "" {
 		providerLabel = e.ActiveProviderSummary()
 	}
-	return fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
+	return fmt.Errorf(T("KI nicht erreichbar (%s): %w"), providerLabel, err)
 }
 
 func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string, images []AIImage) (string, error) {
@@ -312,7 +312,7 @@ func cliErrorDetail(stdout, stderr string) string {
 		msg = strings.TrimSpace(stdout)
 	}
 	if msg == "" {
-		return "keine Ausgabe"
+		return T("keine Ausgabe")
 	}
 	return truncateStr(strings.Join(strings.Fields(msg), " "), 200)
 }
@@ -469,7 +469,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
   }
 ]`, count, userPrompt, requestedType, vaultCatalog)
 
-	sysPrompt += timeZoneNote + imagePromptNote(len(images))
+	sysPrompt += timeZoneNote + languageNote() + imagePromptNote(len(images))
 	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	if err != nil {
@@ -509,7 +509,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 					},
 				}
 				if strings.TrimSpace(p.Command) != "" {
-					progressStep(ctx, "Führe den Befehl von „%s“ zum ersten Mal aus …", p.Title)
+					progressStep(ctx, T("Führe den Befehl von „%s“ zum ersten Mal aus …"), p.Title)
 				}
 				_ = p.RunDataRefresh(ctx, vaultEnv...)
 			}
@@ -517,7 +517,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 		}
 	}
 
-	return nil, providerLabel, fmt.Errorf("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s", providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
+	return nil, providerLabel, fmt.Errorf(T("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s"), providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
 }
 
 // RefinePanel executes Prompt 2 (or 3+): takes an existing PanelSpec and applies a natural-language refinement prompt.
@@ -538,7 +538,7 @@ REFINEMENT PROMPT (Prompt #2): %q
 Keep the same "id" (%q). If the user asks to switch between "native" and "html", update "type" and populate "metrics"/"rows" or "html" accordingly.
 Return ONLY the updated single JSON object (no markdown commentary outside JSON).`, string(currentJSON), vaultCatalog, refinePrompt, existing.ID)
 
-	sysPrompt += timeZoneNote + imagePromptNote(len(images))
+	sysPrompt += timeZoneNote + languageNote() + imagePromptNote(len(images))
 	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	stepNum := len(existing.PromptHistory) + 1
@@ -565,14 +565,14 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 			})
 			updated.Normalize()
 			if strings.TrimSpace(updated.Command) != "" {
-				progressStep(ctx, "Führe den geänderten Befehl aus …")
+				progressStep(ctx, "%s", T("Führe den geänderten Befehl aus …"))
 			}
 			_ = updated.RunDataRefresh(ctx, vaultEnv...)
 			return updated, providerLabel, nil
 		}
 	}
 
-	return nil, providerLabel, fmt.Errorf("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s", providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
+	return nil, providerLabel, fmt.Errorf(T("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s"), providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
 }
 
 func extractPanelsFromText(raw string) ([]*PanelSpec, error) {
@@ -663,6 +663,15 @@ func synthesizeHTMLForPanel(p *PanelSpec) string {
   </script>
 </body>
 </html>`, accent, accent, accent, accent, p.Icon, p.Title, strings.ToUpper(p.Status), p.Subtitle, p.BadgeText, rowsHTML.String())
+}
+
+// languageNote tells the AI which language the panel's texts are in: the UI's.
+func languageNote() string {
+	lang := "German"
+	if Language() == "en" {
+		lang = "English"
+	}
+	return "\n\nLANGUAGE: Write every text the user sees (title, subtitle, labels, badge, rows, action labels, error texts of the command) in " + lang + ", unless the user's request clearly asks for another language."
 }
 
 func truncateStr(s string, max int) string {

@@ -20,27 +20,27 @@ func (a *App) renderTabOverview(c *ui.Context) {
 	ui.Row(c).Grow(1).MinHeight(0).FillWidth().Padding(20).Gap(20).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(14).Children(func() {
 			pageHeader(c, "Panels",
-				fmt.Sprintf("%d von %d in der Menüleiste · %d als Widget", enabledCnt, len(a.panels), floatingCnt),
+				fmt.Sprintf(T("%d von %d in der Menüleiste · %d als Widget"), enabledCnt, len(a.panels), floatingCnt),
 				func() {
-					ui.Button(c.Key("ov-more"), "⋯").Tooltip("Weitere Aktionen").Menu(func(m *ui.Menu) {
-						if m.Item("Alle in der Menüleiste zeigen").Chosen() {
+					ui.Button(c.Key("ov-more"), "⋯").Tooltip(T("Weitere Aktionen")).Menu(func(m *ui.Menu) {
+						if m.Item(T("Alle in der Menüleiste zeigen")).Chosen() {
 							a.setAllPanelsEnabled(true)
 						}
-						if m.Item("Alle aus der Menüleiste nehmen").Chosen() {
+						if m.Item(T("Alle aus der Menüleiste nehmen")).Chosen() {
 							a.setAllPanelsEnabled(false)
 						}
 						m.Separator()
-						if m.Item("Alle jetzt aktualisieren").Chosen() {
+						if m.Item(T("Alle jetzt aktualisieren")).Chosen() {
 							a.refreshAllNow()
 						}
 						m.Separator()
-						if m.Item("Eigene Panels teilen …").Chosen() {
+						if m.Item(T("Eigene Panels teilen …")).Chosen() {
 							a.openExport(a.panels)
 						}
-						if m.Item("Panels importieren …").Chosen() {
+						if m.Item(T("Panels importieren …")).Chosen() {
 							a.pickImportFile()
 						}
-						if m.Item("Aus Zwischenablage importieren").Chosen() {
+						if m.Item(T("Aus Zwischenablage importieren")).Chosen() {
 							a.importFromClipboard()
 						}
 					})
@@ -67,7 +67,7 @@ func (a *App) renderPanelList(c *ui.Context, prefix string, selectable bool) {
 		ui.Row(c).FillWidth().Padding(0, 12).AlignItems(ui.Center).Gap(10).Children(func() {
 			ui.Row(c).Grow(1)
 			fixedCell(c, trayColWidth, func() {
-				ui.Text(c, "Menüleiste").FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, T("Menüleiste")).FontSize(10.5).TextColor(t.TextMuted)
 			})
 			fixedCell(c, widgetColWidth, func() {
 				ui.Text(c, "Widget").FontSize(10.5).TextColor(t.TextMuted)
@@ -99,7 +99,7 @@ func (a *App) renderPanelRow(c *ui.Context, prefix string, p *PanelSpec, selecta
 	row.Children(func() {
 		ui.Text(c, p.Icon).FontSize(17).Width(26)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			title := ui.Text(c, p.Title).FontSize(13).Bold().SingleLine()
+			title := ui.Text(c, T(p.Title)).FontSize(13).Bold().SingleLine() // delivered panels keep their German default name on disk
 			if !p.Enabled && !p.PinnedFloating {
 				title.TextColor(t.TextMuted)
 			}
@@ -109,19 +109,19 @@ func (a *App) renderPanelRow(c *ui.Context, prefix string, p *PanelSpec, selecta
 			})
 		})
 		fixedCell(c, trayColWidth, func() {
-			if ui.Switch(c.Key(prefix+"-sw-tray-"+p.ID), &p.Enabled).Label("Menüleiste").Changed() {
-				msg := "„" + p.Title + "“ aus der Menüleiste genommen"
+			if ui.Switch(c.Key(prefix+"-sw-tray-"+p.ID), &p.Enabled).Label(T("Menüleiste")).Changed() {
+				msg := T("„") + p.Title + T("“ aus der Menüleiste genommen")
 				if p.Enabled {
-					msg = "„" + p.Title + "“ in der Menüleiste"
+					msg = T("„") + p.Title + T("“ in der Menüleiste")
 				}
 				a.persistPanelToggle(p, msg)
 			}
 		})
 		fixedCell(c, widgetColWidth, func() {
 			if ui.Switch(c.Key(prefix+"-sw-float-"+p.ID), &p.PinnedFloating).Label("Widget").Changed() {
-				msg := "Widget „" + p.Title + "“ ausgeblendet"
+				msg := T("Widget „") + p.Title + T("“ ausgeblendet")
 				if p.PinnedFloating {
-					msg = "„" + p.Title + "“ als Widget auf dem Desktop"
+					msg = T("„") + p.Title + T("“ als Widget auf dem Desktop")
 				}
 				a.persistPanelToggle(p, msg)
 			}
@@ -137,7 +137,7 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 	ui.Column(c).Width(400).FillHeight().Gap(12).Children(func() {
 		if sel == nil {
 			ui.Column(c).Grow(1).FillWidth().Radius(10).Border(1, t.Border).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Wähle links ein Panel aus.").TextColor(t.TextMuted)
+				ui.Text(c, T("Wähle links ein Panel aus.")).TextColor(t.TextMuted)
 			})
 			return
 		}
@@ -149,16 +149,16 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, panelMetaLine(sel)).FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
-			if ui.Button(c.Key("detail-rename"), "✎").Tooltip("Name, Symbol und Menüleisten-Text ändern").Clicked() {
+			if ui.Button(c.Key("detail-rename"), "✎").Tooltip(T("Name, Symbol und Menüleisten-Text ändern")).Clicked() {
 				a.openRename(sel)
 			}
 			if sel.BuiltinKind == BuiltinJiraQuickAccess {
-				if ui.Button(c.Key("detail-jira-board"), "Board öffnen").Clicked() {
+				if ui.Button(c.Key("detail-jira-board"), T("Board öffnen")).Clicked() {
 					a.OpenFullJiraBoardWindow(sel)
 				}
 			}
 			if sel.Enabled {
-				if ui.Button(c.Key("detail-popover"), "Popover öffnen").Tooltip("Öffnet das Panel wie aus der Menüleiste").Clicked() {
+				if ui.Button(c.Key("detail-popover"), T("Popover öffnen")).Tooltip(T("Öffnet das Panel wie aus der Menüleiste")).Clicked() {
 					a.togglePanelFlyout(sel.ID)
 				}
 			}
@@ -173,12 +173,12 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 				del := ui.ButtonBase(c.Key("detail-delete-"+sel.ID)).Cursor(ui.CursorPointer).Padding(2, 4)
 				hovered := del.Hovered()
 				del.Children(func() {
-					txt := ui.Text(c, "Panel löschen …").FontSize(11.5).TextColor(t.Danger.Alpha(0.8))
+					txt := ui.Text(c, T("Panel löschen …")).FontSize(11.5).TextColor(t.Danger.Alpha(0.8))
 					if hovered {
 						txt.TextColor(t.Danger)
 					}
 				})
-				if del.Tooltip("Löscht das Panel nach einer Rückfrage (⌘⌫)").Clicked() {
+				if del.Tooltip(T("Löscht das Panel nach einer Rückfrage (⌘⌫)")).Clicked() {
 					a.askDeletePanel(sel)
 				}
 			})
@@ -192,8 +192,8 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 	if sel.Configurable() {
 		ui.Column(c.Key("module-cfg")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Konfiguration").FontSize(13).Bold().Grow(1)
-				if ui.Button(c.Key("module-dup"), "Duplizieren").Tooltip("Ein weiteres Panel dieses Moduls mit eigenen Einstellungen").Clicked() {
+				ui.Text(c, T("Konfiguration")).FontSize(13).Bold().Grow(1)
+				if ui.Button(c.Key("module-dup"), T("Duplizieren")).Tooltip(T("Ein weiteres Panel dieses Moduls mit eigenen Einstellungen")).Clicked() {
 					a.duplicatePanel(sel)
 				}
 			})
@@ -202,7 +202,7 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 		return
 	}
 	if sel.IsBuiltin {
-		ui.Text(c, "System-Modul: wird mit OmaMac geliefert und lässt sich nicht per KI ändern.").
+		ui.Text(c, T("System-Modul: wird mit OmaMac geliefert und lässt sich nicht per KI ändern.")).
 			FontSize(11.5).TextColor(t.TextMuted)
 		return
 	}
@@ -214,18 +214,18 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 		box.Border(2, t.Accent)
 	}
 	box.Children(func() {
-		ui.Text(c, "Mit KI anpassen").FontSize(13).Bold()
+		ui.Text(c, T("Mit KI anpassen")).FontSize(13).Bold()
 		submit := ui.TextArea(c.Key("refine-prompt-"+sel.ID), &a.prompt2Text).
-			Placeholder("z. B. „Färbe den Status rot, wenn der Preis unter 400 € fällt“").
+			Placeholder(T("z. B. „Färbe den Status rot, wenn der Preis unter 400 € fällt“")).
 			Height(56).FillWidth().
 			OnPaste(func(text string) bool { return text == "" && a.pasteImage(&a.refineImages) }).
 			Shortcut(ui.Cmd, ui.KeyEnter)
 		a.renderImageAttachments(c, "refine-images", &a.refineImages)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			if n := len(sel.PromptHistory); n > 0 {
-				label := fmt.Sprintf("Verlauf (%d)", n)
+				label := fmt.Sprintf(T("Verlauf (%d)"), n)
 				if a.showHistory {
-					label = "Verlauf ausblenden"
+					label = T("Verlauf ausblenden")
 				}
 				if textButton(c, "refine-history", label) {
 					a.showHistory = !a.showHistory
@@ -233,7 +233,7 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 			}
 			ui.Spacer(c)
 			busy := a.busy || strings.TrimSpace(a.prompt2Text) == ""
-			if (ui.PrimaryButton(c.Key("refine-submit"), "Anpassen").Tooltip("⌘↵").Disabled(busy).Clicked() || submit) && !busy {
+			if (ui.PrimaryButton(c.Key("refine-submit"), T("Anpassen")).Tooltip("⌘↵").Disabled(busy).Clicked() || submit) && !busy {
 				a.triggerPrompt2Refine(sel.ID, a.prompt2Text)
 			}
 		})
@@ -251,43 +251,43 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 
 // renderPanelMoreMenu is the ⋯ menu of a panel; a right-click on its row opens the same items.
 func (a *App) renderPanelMoreMenu(c *ui.Context, p *PanelSpec) {
-	ui.Button(c.Key("detail-more-"+p.ID), "⋯").Tooltip("Weitere Aktionen").Menu(func(m *ui.Menu) {
+	ui.Button(c.Key("detail-more-"+p.ID), "⋯").Tooltip(T("Weitere Aktionen")).Menu(func(m *ui.Menu) {
 		a.panelMenuItems(m, p)
 	})
 }
 
 // panelMenuItems are a panel's actions in its ⋯ and right-click menus, deleting last.
 func (a *App) panelMenuItems(m *ui.Menu, p *PanelSpec) {
-	if m.Item("Jetzt aktualisieren").Chosen() {
-		a.refreshPanelAsync(p, "„"+p.Title+"“ aktualisiert")
+	if m.Item(T("Jetzt aktualisieren")).Chosen() {
+		a.refreshPanelAsync(p, T("„")+p.Title+T("“ aktualisiert"))
 	}
-	if m.Item("Umbenennen …").Chosen() {
+	if m.Item(T("Umbenennen …")).Chosen() {
 		a.openRename(p)
 	}
-	if !p.IsBuiltin && m.Item("Teilen …").Chosen() {
+	if !p.IsBuiltin && m.Item(T("Teilen …")).Chosen() {
 		a.openExport([]*PanelSpec{p})
 	}
-	if p.Configurable() && m.Item("Duplizieren").Chosen() {
+	if p.Configurable() && m.Item(T("Duplizieren")).Chosen() {
 		a.duplicatePanel(p)
 	}
 	if p.IsBuiltin {
 		if p.Deletable() {
 			m.Separator()
-			if m.Item("Löschen …").Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
+			if m.Item(T("Löschen …")).Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
 				a.askDeletePanel(p)
 			}
 		}
 		return
 	}
-	label := "Als HTML-Ansicht darstellen"
+	label := T("Als HTML-Ansicht darstellen")
 	if p.Type == PanelTypeHTML {
-		label = "Als native Ansicht darstellen"
+		label = T("Als native Ansicht darstellen")
 	}
 	if m.Item(label).Chosen() {
 		a.togglePanelType(p)
 	}
 	m.Separator()
-	if m.Item("Löschen …").Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
+	if m.Item(T("Löschen …")).Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
 		a.askDeletePanel(p)
 	}
 }
@@ -302,11 +302,11 @@ func (a *App) askDeletePanel(p *PanelSpec) {
 }
 
 func (a *App) renderDeleteConfirm(c *ui.Context) {
-	title := "Panel löschen?"
+	title := T("Panel löschen?")
 	if p := a.findPanel(a.confirmDeleteID); p != nil {
-		title = "„" + p.Title + "“ löschen?"
+		title = fmt.Sprintf(T("„%s“ löschen?"), p.Title)
 	}
-	if ui.AlertDialog(c, &a.confirmDelete, title, "Das Panel und sein Abfrage-Skript werden entfernt.", "Abbrechen", "Löschen") == 1 {
+	if ui.AlertDialog(c, &a.confirmDelete, title, T("Das Panel und sein Abfrage-Skript werden entfernt."), T("Abbrechen"), T("Löschen")) == 1 {
 		a.deletePanel(a.confirmDeleteID)
 	}
 }
@@ -320,11 +320,11 @@ func (a *App) togglePanelType(p *PanelSpec) {
 	} else {
 		p.Type = PanelTypeNative
 	}
-	kind := "nativ"
+	kind := T("nativ")
 	if p.Type == PanelTypeHTML {
-		kind = "als HTML"
+		kind = T("als HTML")
 	}
-	a.persistPanelToggle(p, "„"+p.Title+"“ wird jetzt "+kind+" dargestellt")
+	a.persistPanelToggle(p, T("„")+p.Title+T("“ wird jetzt ")+kind+T(" dargestellt"))
 }
 
 func (a *App) deletePanel(id string) {
@@ -344,7 +344,7 @@ func (a *App) deletePanel(id string) {
 		a.selectPanel(a.panels[0].ID)
 	}
 	a.syncAllPanelRuntimes()
-	a.toast("„" + p.Title + "“ gelöscht")
+	a.toast(T("„") + p.Title + T("“ gelöscht"))
 }
 
 // refreshAllNow refreshes every enabled panel at once, whatever their intervals.
@@ -352,7 +352,7 @@ func (a *App) refreshAllNow() {
 	go func() {
 		a.refreshDuePanels(true)
 		a.updateUI(func() {
-			a.toast("Alle Panels aktualisiert")
+			a.toast(T("Alle Panels aktualisiert"))
 		})
 	}()
 }
@@ -377,24 +377,24 @@ func (a *App) renderRenameDialog(c *ui.Context) {
 	t := c.Theme()
 	ui.Modal(c.Key("rename"), &a.showRename, func() {
 		ui.Column(c).Width(520).Gap(14).Children(func() {
-			ui.Text(c, "Panel umbenennen").FontSize(18).Bold()
+			ui.Text(c, T("Panel umbenennen")).FontSize(18).Bold()
 			submit := false
 			ui.Form(c, func() {
 				ui.Field(c, "Name", func() {
 					submit = ui.TextInput(c.Key("rename-title"), &a.renameTitle).AutoFocus().FillWidth().Shortcut(0, ui.KeyEnter) || submit
 				})
-				ui.Field(c, "Symbol", func() {
-					ui.TextInput(c.Key("rename-icon"), &a.renameIcon).Placeholder("Emoji, z. B. 🛡️").Width(120)
+				ui.Field(c, T("Symbol"), func() {
+					ui.TextInput(c.Key("rename-icon"), &a.renameIcon).Placeholder(T("Emoji, z. B. 🛡️")).Width(120)
 				})
-				ui.Field(c, "Menüleiste", func() {
+				ui.Field(c, T("Menüleiste"), func() {
 					ui.Column(c).FillWidth().Gap(4).Children(func() {
 						submit = ui.TextInput(c.Key("rename-menu"), &a.renameMenu).
-							Placeholder("automatisch: „"+strings.TrimSpace(p.BadgeText)+"“").FillWidth().Shortcut(0, ui.KeyEnter) || submit
-						ui.Text(c, "Leer: Text des Skripts. "+MenuBarStatusToken+" fügt ihn ein – z. B. „Kunde A "+MenuBarStatusToken+"“").
+							Placeholder(T("automatisch: „")+strings.TrimSpace(p.BadgeText)+T("“")).FillWidth().Shortcut(0, ui.KeyEnter) || submit
+						ui.Text(c, T("Leer: Text des Skripts. ")+MenuBarStatusToken+T(" fügt ihn ein – z. B. „Kunde A ")+MenuBarStatusToken+T("“")).
 							FontSize(11.5).TextColor(t.TextMuted)
 					})
 				})
-				ui.Field(c, "Vorschau", func() {
+				ui.Field(c, T("Vorschau"), func() {
 					preview := *p
 					preview.Icon, preview.MenuBarText = strings.TrimSpace(a.renameIcon), a.renameMenu
 					ui.Text(c, preview.TrayLabel()).FontSize(12.5).Padding(3, 10).Radius(6).Background(t.Background).SingleLine()
@@ -402,10 +402,10 @@ func (a *App) renderRenameDialog(c *ui.Context) {
 			})
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c.Key("rename-cancel"), "Abbrechen").Clicked() {
+				if ui.Button(c.Key("rename-cancel"), T("Abbrechen")).Clicked() {
 					a.showRename = false
 				}
-				if ui.PrimaryButton(c.Key("rename-save"), "Speichern").Disabled(strings.TrimSpace(a.renameTitle) == "").Clicked() || submit {
+				if ui.PrimaryButton(c.Key("rename-save"), T("Speichern")).Disabled(strings.TrimSpace(a.renameTitle) == "").Clicked() || submit {
 					a.applyRename(p)
 				}
 			})
@@ -427,5 +427,5 @@ func (a *App) applyRename(p *PanelSpec) {
 	_ = SavePanel(a.Config.PanelsDir, p)
 	a.showRename = false
 	a.syncAllPanelRuntimes()
-	a.toast("„" + p.Title + "“ gespeichert")
+	a.toast(T("„") + p.Title + T("“ gespeichert"))
 }

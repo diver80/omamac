@@ -117,7 +117,7 @@ func LoadAIImage(path string) (AIImage, error) {
 	cmd := exec.Command("/usr/bin/sips", "-s", "format", "jpeg", "-s", "formatOptions", "82",
 		"-Z", fmt.Sprint(maxImageSide), path, "--out", out)
 	if msg, err := cmd.CombinedOutput(); err != nil {
-		return AIImage{}, fmt.Errorf("Bild %s lässt sich nicht umwandeln: %v %s", filepath.Base(path), err, strings.TrimSpace(string(msg)))
+		return AIImage{}, fmt.Errorf(T("Bild %s lässt sich nicht umwandeln: %v %s"), filepath.Base(path), err, strings.TrimSpace(string(msg)))
 	}
 	data, err = os.ReadFile(out)
 	if err != nil {
@@ -134,7 +134,7 @@ func LoadAIImages(ctx context.Context, paths []string) ([]AIImage, error) {
 		if err != nil {
 			return nil, err
 		}
-		progressStep(ctx, "Bild %s vorbereitet (%d KB)", filepath.Base(p), len(img.Data)/1024)
+		progressStep(ctx, T("Bild %s vorbereitet (%d KB)"), filepath.Base(p), len(img.Data)/1024)
 		imgs = append(imgs, img)
 	}
 	return imgs, nil
@@ -198,9 +198,9 @@ func runCLI(ctx context.Context, label, bin string, args, extraEnv []string, std
 	if err != nil {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
-			return "", fmt.Errorf("%s: abgebrochen: %w", label, context.Canceled)
+			return "", fmt.Errorf(T("%s: abgebrochen: %w"), label, context.Canceled)
 		case runCtx.Err() != nil:
-			return "", fmt.Errorf("%s: keine Antwort nach %d s (Zeitüberschreitung)", label, int(time.Since(start).Seconds()))
+			return "", fmt.Errorf(T("%s: keine Antwort nach %d s (Zeitüberschreitung)"), label, int(time.Since(start).Seconds()))
 		}
 		// CLIs print quota/login errors ("Usage Limit Reached") to stdout and exit non-zero.
 		return "", fmt.Errorf("%s: %v: %s", label, err, cliErrorDetail(stdout, stderr.String()))
@@ -293,7 +293,7 @@ func (c *claudeStreamCollector) answer() (string, error) {
 			return s, nil
 		}
 	}
-	return "", errors.New("keine Ausgabe")
+	return "", errors.New(T("keine Ausgabe"))
 }
 
 // formatJSONStream indents JSON that may still be arriving: it works on any

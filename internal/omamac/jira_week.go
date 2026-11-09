@@ -61,11 +61,11 @@ func weekKey(offset, field int) string { return fmt.Sprintf("%d/%d", offset, fie
 func weekTitle(start time.Time) string {
 	_, kw := start.ISOWeek()
 	end := start.AddDate(0, 0, 6)
-	from := start.Format("02.01.")
+	from := start.Format(T("02.01."))
 	if start.Month() == end.Month() {
-		from = start.Format("02.")
+		from = start.Format(T("02."))
 	}
-	return fmt.Sprintf("KW %d · %s–%s", kw, from, end.Format("02.01.2006"))
+	return fmt.Sprintf(T("KW %d · %s–%s"), kw, from, end.Format(T("02.01.2006")))
 }
 
 // weekJQL limits an instance's week JQL to the week (and, for due dates this week, to what is overdue).
@@ -182,23 +182,23 @@ func syncWeekPanel(p *PanelSpec, cards []weekCard, start time.Time, field, asked
 	}
 	inWeek := len(cards) - overdue
 	p.LastUpdated = time.Now().Format("15:04:05")
-	p.BadgeText = fmt.Sprintf("KW%d · %d", kw, inWeek)
+	p.BadgeText = fmt.Sprintf(T("KW%d · %d"), kw, inWeek)
 	p.Status = "ok"
 	if overdue > 0 {
-		p.BadgeText += fmt.Sprintf(" · %d überfällig", overdue)
+		p.BadgeText += fmt.Sprintf(T(" · %d überfällig"), overdue)
 		p.Status = "warn"
 	}
 	switch {
 	case asked == 0:
-		p.BadgeText, p.Status = "keine Instanz", "info"
+		p.BadgeText, p.Status = T("keine Instanz"), "info"
 	case failed == asked:
-		p.BadgeText, p.Status = "Abruf ⚠", "crit"
+		p.BadgeText, p.Status = T("Abruf ⚠"), "crit"
 	case failed > 0:
 		p.Status = "warn"
 	}
 	p.Metrics = []PanelMetric{
-		{Label: weekFieldLabels[field] + " " + weekTitle(start), Value: fmt.Sprint(inWeek), Unit: "Tickets", Status: "info"},
-		{Label: "Noch offen", Value: fmt.Sprint(open), Unit: fmt.Sprintf("%d überfällig", overdue), Status: p.Status},
+		{Label: T(weekFieldLabels[field]) + " " + weekTitle(start), Value: fmt.Sprint(inWeek), Unit: "Tickets", Status: "info"},
+		{Label: T("Noch offen"), Value: fmt.Sprint(open), Unit: fmt.Sprintf(T("%d überfällig"), overdue), Status: p.Status},
 	}
 	var rows []PanelRow
 	for _, cd := range cards {
@@ -206,7 +206,7 @@ func syncWeekPanel(p *PanelSpec, cards []weekCard, start time.Time, field, asked
 			break
 		}
 		rows = append(rows, PanelRow{Left: fmt.Sprintf("[%s] %s", cd.Key, truncateStr(cd.Summary, 38)),
-			Right: cd.InstanceName, Badge: weekdayShort[(int(cd.Day.Weekday())+6)%7], Status: "info", URL: cd.URL})
+			Right: cd.InstanceName, Badge: T(weekdayShort[(int(cd.Day.Weekday())+6)%7]), Status: "info", URL: cd.URL})
 	}
 	p.Rows = rows
 }
@@ -279,44 +279,44 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
-			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
+			ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
-			if ui.Button(c.Key("wk-refresh"), "↻").Tooltip("Woche neu laden").Clicked() {
+			if ui.Button(c.Key("wk-refresh"), "↻").Tooltip(T("Woche neu laden")).Clicked() {
 				a.reloadWeek(p)
 			}
 			closeButton(c, "wk-close", onClose)
 		})
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			if ui.Button(c.Key("wk-prev"), "◀").Tooltip("Vorige Woche").Clicked() {
+			if ui.Button(c.Key("wk-prev"), "◀").Tooltip(T("Vorige Woche")).Clicked() {
 				a.turnWeek(p, -1)
 			}
-			if ui.Button(c.Key("wk-today"), "Heute").Tooltip("Zur aktuellen Woche").Disabled(offset == 0).Clicked() {
+			if ui.Button(c.Key("wk-today"), T("Heute")).Tooltip(T("Zur aktuellen Woche")).Disabled(offset == 0).Clicked() {
 				a.turnWeek(p, 0)
 			}
-			if ui.Button(c.Key("wk-next"), "▶").Tooltip("Nächste Woche").Clicked() {
+			if ui.Button(c.Key("wk-next"), "▶").Tooltip(T("Nächste Woche")).Clicked() {
 				a.turnWeek(p, 1)
 			}
 			ui.Text(c, weekTitle(start)).FontSize(13).Bold()
 			if loading {
-				ui.Text(c, "lädt …").FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, T("lädt …")).FontSize(10.5).TextColor(t.TextMuted)
 			}
 			ui.Spacer(c)
 			if lastSync != "" && current {
-				ui.Text(c, "Stand "+lastSync).FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, T("Stand ")+lastSync).FontSize(10.5).TextColor(t.TextMuted)
 			}
-			if ui.Segmented(c.Key("wk-field"), &st.Field, weekFieldLabels[:]...).Changed() {
+			if ui.Segmented(c.Key("wk-field"), &st.Field, T(weekFieldLabels[0]), T(weekFieldLabels[1]), T(weekFieldLabels[2])).Changed() {
 				p.moduleConfig().DateField = weekFields[st.Field]
 				a.saveModuleConfig(p)
 				a.reloadWeek(p)
 			}
-			if ui.Button(c.Key("wk-cfg"), "⚙️").Tooltip("Welche Tickets je Instanz (JQL)").Clicked() {
+			if ui.Button(c.Key("wk-cfg"), "⚙️").Tooltip(T("Welche Tickets je Instanz (JQL)")).Clicked() {
 				st.ShowConfig = !st.ShowConfig
 			}
 		})
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			instancePill(c, "wk-inst-all", "Alle Instanzen", st.FilterInst == "", func() { st.FilterInst = "" })
+			instancePill(c, "wk-inst-all", T("Alle Instanzen"), st.FilterInst == "", func() { st.FilterInst = "" })
 			for _, inst := range instances {
 				id := inst.ID
 				lbl := fmt.Sprintf("%s (%d)", inst.Name, perInst[id])
@@ -338,7 +338,7 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 			return
 		}
 		if len(instances) == 0 {
-			ui.Text(c, "Keine Jira-Instanz für diese Woche – unter ⚙️ auswählen.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, T("Keine Jira-Instanz für diese Woche – unter ⚙️ auswählen.")).FontSize(12).TextColor(t.TextMuted)
 			return
 		}
 
@@ -350,10 +350,10 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 				}
 				ci := col
 				colCards := cols[ci]
-				title, accent, border, grow := "Überfällig", t.Danger, t.Danger.Alpha(0.6), float32(1)
+				title, accent, border, grow := T("Überfällig"), t.Danger, t.Danger.Alpha(0.6), float32(1)
 				if ci > 0 {
 					day := start.AddDate(0, 0, ci-1)
-					title = weekdayShort[ci-1] + " " + day.Format("02.01.")
+					title = T(weekdayShort[ci-1]) + " " + day.Format(T("02.01."))
 					accent, border = t.TextMuted, t.Border
 					if sameDay(day, now) {
 						accent, border = t.Accent, t.Accent.Alpha(0.6)
@@ -394,7 +394,7 @@ func (a *App) renderWeekCard(c *ui.Context, cd weekCard, field int) {
 		Cursor(ui.CursorPointer).OnClick(func() { a.OpenEmbeddedTicketWindow(iss) }).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Text(c, cd.Key).FontSize(10.5).Bold().TextColor(col).Grow(1).MinWidth(0).SingleLine()
-			ui.Link(c.Key("wk-ext-"+cd.BaseURL+cd.Key), "↗", iss.URL).FontSize(11).Tooltip("Im Browser öffnen")
+			ui.Link(c.Key("wk-ext-"+cd.BaseURL+cd.Key), "↗", iss.URL).FontSize(11).Tooltip(T("Im Browser öffnen"))
 		})
 		ui.Text(c, cd.Summary).FontSize(11).MaxLines(3)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {

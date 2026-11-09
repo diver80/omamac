@@ -108,6 +108,12 @@ func (r *aiRun) snapshot() aiRunView {
 	}
 }
 
+// isStep reports whether a progress step's text was written from format (a text of
+// progressStep, up to its first verb), in the language shown.
+func isStep(text, format string) bool {
+	return strings.HasPrefix(text, strings.SplitN(T(format), "%", 2)[0])
+}
+
 // progress estimates how far the run is, 0..1, from its steps, the streamed
 // output and the time: the AI's answer length is unknown up front.
 func (v aiRunView) progress() float64 {
@@ -118,11 +124,11 @@ func (v aiRunView) progress() float64 {
 	sent, answered, checking := false, false, false
 	for _, s := range v.steps {
 		switch {
-		case strings.HasPrefix(s.text, "Anfrage an"):
+		case isStep(s.text, "Anfrage an %s gesendet (%d Zeichen)"):
 			sent = true
-		case strings.HasPrefix(s.text, "Antwort erhalten"):
+		case isStep(s.text, "Antwort erhalten nach %d s (%d Zeichen)"):
 			answered = true
-		case strings.HasPrefix(s.text, "Führe"), strings.HasPrefix(s.text, "Prüfe"):
+		case isStep(s.text, "Führe den Befehl von „%s“ zum ersten Mal aus …"), isStep(s.text, "Führe den geänderten Befehl aus …"), isStep(s.text, "Prüfe „%s“ …"):
 			checking = true
 		}
 	}
@@ -206,7 +212,7 @@ func (r *aiRun) finish(err error) {
 	r.cancel()
 	if err != nil {
 		if r.canceled {
-			r.errText = "Abgebrochen."
+			r.errText = T("Abgebrochen.")
 		} else {
 			r.errText = errText(err)
 		}
@@ -295,19 +301,19 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 			})
 
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				if compact && textButton(c, "ai-run-expand", "Protokoll anzeigen") {
+				if compact && textButton(c, "ai-run-expand", T("Protokoll anzeigen")) {
 					a.aiRunExpanded = true
 				}
-				if !compact && v.output != "" && ui.Button(c.Key("ai-run-copy"), "Ausgabe kopieren").Tooltip("Als eingerücktes JSON, wenn die Antwort gültiges JSON ist").Clicked() {
+				if !compact && v.output != "" && ui.Button(c.Key("ai-run-copy"), T("Ausgabe kopieren")).Tooltip(T("Als eingerücktes JSON, wenn die Antwort gültiges JSON ist")).Clicked() {
 					c.WriteClipboard(prettyAIOutput(v.output))
-					a.toast("Ausgabe kopiert")
+					a.toast(T("Ausgabe kopiert"))
 				}
 				ui.Spacer(c)
 				if !v.done {
-					if ui.Button(c.Key("ai-run-hide"), "Im Hintergrund").Tooltip("Die KI arbeitet weiter; oben rechts wieder öffnen").Clicked() {
+					if ui.Button(c.Key("ai-run-hide"), T("Im Hintergrund")).Tooltip(T("Die KI arbeitet weiter; oben rechts wieder öffnen")).Clicked() {
 						a.showAIRun = false
 					}
-					if ui.Button(c.Key("ai-run-cancel"), "Abbrechen").Clicked() {
+					if ui.Button(c.Key("ai-run-cancel"), T("Abbrechen")).Clicked() {
 						r.requestCancel()
 					}
 				} else if ok := ui.PrimaryButton(c.Key("ai-run-ok"), "OK"); ok.Clicked() || ok.Shortcut(0, ui.KeyEnter) {
@@ -324,7 +330,7 @@ func (a *App) renderAIRunHeader(c *ui.Context, v aiRunView) {
 	if v.done && v.errText == "" && v.result != nil {
 		n := len(v.result.panels)
 		if n == 1 {
-			title = fmt.Sprintf("„%s“ %s", v.result.panels[0].title, v.result.verb)
+			title = fmt.Sprintf(T("„%s“ %s"), v.result.panels[0].title, v.result.verb)
 		} else {
 			title = fmt.Sprintf("%d Panels %s", n, v.result.verb)
 		}
@@ -348,14 +354,14 @@ func (a *App) renderAIRunProgress(c *ui.Context, v aiRunView) {
 	t := c.Theme()
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
 		ui.Progress(c, v.progress()).FillWidth()
-		current := "Starte …"
+		current := T("Starte …")
 		if n := len(v.steps); n > 0 {
 			current = v.steps[n-1].text
 		}
 		if v.done {
-			current = "Fertig."
+			current = T("Fertig.")
 			if v.errText != "" {
-				current = "Fehlgeschlagen."
+				current = T("Fehlgeschlagen.")
 			}
 		}
 		ui.Text(c, current).FontSize(12).TextColor(t.TextMuted).FillWidth().SingleLine()
@@ -396,13 +402,13 @@ func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
 	}
 	switch {
 	case !v.done && v.output == "":
-		ui.Text(c, "Warte auf die erste Ausgabe der KI …").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, T("Warte auf die erste Ausgabe der KI …")).FontSize(12).TextColor(t.TextMuted)
 	case !v.done:
-		header("Antwort der KI (live)")
+		header(T("Antwort der KI (live)"))
 		answer()
 	case v.output == "":
 	case v.result != nil:
-		ui.Collapsible(c, "Antwort der KI", &a.aiRunShowRaw, func() {
+		ui.Collapsible(c, T("Antwort der KI"), &a.aiRunShowRaw, func() {
 			ui.Row(c).FillWidth().Children(func() {
 				ui.Spacer(c)
 				a.renderOutputViewSwitch(c, v.output)
@@ -410,7 +416,7 @@ func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
 			answer()
 		})
 	default:
-		header("Antwort der KI")
+		header(T("Antwort der KI"))
 		answer()
 	}
 }
@@ -425,7 +431,7 @@ func (a *App) renderOutputViewSwitch(c *ui.Context, output string) {
 	if a.Config.AIOutputRaw {
 		idx = 1
 	}
-	if ui.Segmented(c.Key("ai-out-view"), &idx, "Aufbereitet", "JSON").Changed() {
+	if ui.Segmented(c.Key("ai-out-view"), &idx, T("Aufbereitet"), "JSON").Changed() {
 		a.Config.AIOutputRaw = idx == 1
 		_ = SaveConfig(a.ConfigPath, a.Config)
 	}
@@ -454,22 +460,22 @@ func (a *App) renderAIResultPanel(c *ui.Context, key string, p aiResultPanel) {
 
 		var facts []string
 		if p.refresh > 0 {
-			facts = append(facts, fmt.Sprintf("aktualisiert alle %d s", p.refresh))
+			facts = append(facts, fmt.Sprintf(T("aktualisiert alle %d s"), p.refresh))
 		}
 		if p.kind == "HTML" {
 			facts = append(facts, fmt.Sprintf("HTML %d KB", (p.htmlBytes+1023)/1024))
 		} else {
-			facts = append(facts, fmt.Sprintf("%d Kennzahlen · %d Zeilen", p.metrics, p.rows))
+			facts = append(facts, fmt.Sprintf(T("%d Kennzahlen · %d Zeilen"), p.metrics, p.rows))
 		}
 		if n := len(p.actions); n > 0 {
-			facts = append(facts, fmt.Sprintf("%d Aktionen", n))
+			facts = append(facts, fmt.Sprintf(T("%d Aktionen"), n))
 		}
 		ui.Text(c, strings.Join(facts, " · ")).FontSize(11.5).TextColor(t.TextMuted)
 
 		if p.command != "" {
-			label("BEFEHL")
+			label(T("BEFEHL"))
 			code(p.command)
-			label("ERSTER ABRUF")
+			label(T("ERSTER ABRUF"))
 			bg, fg := statusColors(t, p.status)
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				switch {
@@ -484,7 +490,7 @@ func (a *App) renderAIResultPanel(c *ui.Context, key string, p aiResultPanel) {
 			}
 		}
 		if len(p.actions) > 0 {
-			label("AKTIONEN")
+			label(T("AKTIONEN"))
 			for i, act := range p.actions {
 				ui.Row(c.Key(fmt.Sprintf("%s-act-%d", key, i))).FillWidth().Gap(8).Children(func() {
 					ui.Text(c, act[0]).FontSize(12).Width(170).SingleLine()
@@ -525,18 +531,18 @@ func (a *App) renderImageAttachments(c *ui.Context, key string, imgs *[]string) 
 				ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, truncateStr(filepath.Base(path), 12)).FontSize(10).TextColor(t.TextMuted).SingleLine()
 					idx := i
-					if ui.Button(c.Key(fmt.Sprintf("%s-rm-%d", key, i)), "✕").Tooltip("Bild entfernen").Clicked() {
+					if ui.Button(c.Key(fmt.Sprintf("%s-rm-%d", key, i)), "✕").Tooltip(T("Bild entfernen")).Clicked() {
 						*imgs = append((*imgs)[:idx:idx], (*imgs)[idx+1:]...)
 					}
 				})
 			})
 		}
 		if len(*imgs) < MaxAIImages {
-			if ui.Button(c.Key(key+"-add"), "📎 Bild …").Tooltip("Screenshot, Mockup oder Beispiel für die KI – auch per Drag & Drop oder ⌘V").Clicked() {
+			if ui.Button(c.Key(key+"-add"), T("📎 Bild …")).Tooltip(T("Screenshot, Mockup oder Beispiel für die KI – auch per Drag & Drop oder ⌘V")).Clicked() {
 				a.pickImages(imgs)
 			}
 			if len(*imgs) == 0 {
-				ui.Text(c, "Bilder auch hineinziehen oder mit ⌘V einfügen").FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, T("Bilder auch hineinziehen oder mit ⌘V einfügen")).FontSize(11).TextColor(t.TextMuted)
 			}
 		}
 	})
@@ -575,7 +581,7 @@ func (a *App) addImages(imgs *[]string, paths []string) {
 		}
 	}
 	if skipped > 0 {
-		a.toast(fmt.Sprintf("%d Datei(en) übersprungen – nur Bilder, höchstens %d", skipped, MaxAIImages))
+		a.toast(fmt.Sprintf(T("%d Datei(en) übersprungen – nur Bilder, höchstens %d"), skipped, MaxAIImages))
 	}
 }
 
@@ -584,9 +590,9 @@ func (a *App) pickImages(imgs *[]string) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:   a.studioWin,
-			Title:    "Bilder für die KI",
+			Title:    T("Bilder für die KI"),
 			Multiple: true,
-			Filters:  []mygo.FileFilter{{Name: "Bilder", Extensions: []string{"png", "jpg", "jpeg", "gif", "heic", "heif", "webp", "tiff", "bmp"}}},
+			Filters:  []mygo.FileFilter{{Name: T("Bilder"), Extensions: []string{"png", "jpg", "jpeg", "gif", "heic", "heif", "webp", "tiff", "bmp"}}},
 		})
 		if err != nil || len(paths) == 0 {
 			return
@@ -603,7 +609,7 @@ func (a *App) pasteImage(imgs *[]string) bool {
 	}
 	path, err := SavePastedImage(data)
 	if err != nil {
-		a.toast("⚠️ Bild nicht eingefügt: " + err.Error())
+		a.toast(T("⚠️ Bild nicht eingefügt: ") + err.Error())
 		return true
 	}
 	a.addImages(imgs, []string{path})

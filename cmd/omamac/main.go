@@ -19,9 +19,9 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", omamac.DefaultConfigPath(), "Pfad zur OmaMac Konfigurationsdatei (~/.config/omamac/config.json)")
-	startWalOnly := flag.Bool("wal", false, "Schwebendes Wal-Panel direkt beim Start öffnen")
-	checkFile := flag.String("check", "", "Prüft eine Panel-JSON-Datei (owl-check / omamac-check), führt das Daten-Skript aus und rendert eine PNG-Vorschau")
+	configPath := flag.String("config", omamac.DefaultConfigPath(), "path of the OmaMac configuration file (~/.config/omamac/config.json)")
+	startWalOnly := flag.Bool("wal", false, "open the launcher right at the start")
+	checkFile := flag.String("check", "", "check a panel JSON file: run its data script and render a PNG preview")
 	flag.Parse()
 
 	if *checkFile != "" {
@@ -43,6 +43,8 @@ func main() {
 		log.Fatalf("Failed to initialize OmaMac: %v", err)
 	}
 
+	omamac.InitLanguage(appState.Config.Language)
+
 	// .omamac files opened from Finder (see fileAssociations in mygo.json) go to the import
 	mygo.App.OnOpenFile(func(path string) { appState.OpenImportFile(path) })
 
@@ -62,6 +64,7 @@ func main() {
 	}))
 
 	mygo.App.WhenReady(func() {
+		appState.SyncLanguage()
 		studioWin := mygo.NewWindow(mygo.WindowOptions{
 			Title:     "OmaMac",
 			Width:     1320,

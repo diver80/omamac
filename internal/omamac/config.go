@@ -49,7 +49,9 @@ type Config struct {
 	ClaudeCLIPath  string         `json:"claude_cli_path"`
 
 	// Wal-Panel & Omarchy Desktop Settings
-	LauncherShortcut    string `json:"launcher_shortcut"`
+	LauncherShortcut string `json:"launcher_shortcut"`
+	// Language is "de" or "en"; empty follows the language of macOS.
+	Language            string `json:"language,omitempty"`
 	PanelsDir           string `json:"panels_dir"`
 	DefaultPanelType    string `json:"default_panel_type"` // "native", "html", or "both"
 	OnboardingDismissed bool   `json:"onboarding_dismissed"`

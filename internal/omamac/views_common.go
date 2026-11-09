@@ -20,7 +20,7 @@ func closeButton(c *ui.Context, key string, onClose func()) {
 	if onClose == nil {
 		return
 	}
-	if ui.Button(c.Key(key), "✕").Tooltip("Schließen").Clicked() {
+	if ui.Button(c.Key(key), "✕").Tooltip(T("Schließen")).Clicked() {
 		onClose()
 	}
 }
@@ -46,6 +46,14 @@ func appVersion() string {
 	return "dev"
 }
 
+// versionLabel is "v1.9.0", or "dev" when run from source.
+func versionLabel() string {
+	if v := appVersion(); v != "dev" {
+		return "v" + v
+	}
+	return "dev"
+}
+
 // infoBox is a quiet hint in a dialog or form: a tinted box around what fn builds.
 func infoBox(c *ui.Context, fn func()) {
 	t := c.Theme()
@@ -61,10 +69,10 @@ func infoBox(c *ui.Context, fn func()) {
 func storageNote(c *ui.Context, storageErr, what, file string) {
 	t := c.Theme()
 	if storageErr == "" {
-		ui.Text(c, "🔒 "+what+" liegen im macOS-Schlüsselbund (ein Eintrag „"+secretsService+"“).").FontSize(11).TextColor(t.TextMuted)
+		ui.Text(c, "🔒 "+what+T(" liegen im macOS-Schlüsselbund (ein Eintrag „")+secretsService+T("“).")).FontSize(11).TextColor(t.TextMuted)
 		return
 	}
-	ui.Text(c, "⚠ "+what+" liegen in ~/.config/omamac/"+file+" (nur für dich lesbar), weil: "+storageErr).FontSize(11).TextColor(t.Warning)
+	ui.Text(c, "⚠ "+what+T(" liegen in ~/.config/omamac/")+file+T(" (nur für dich lesbar), weil: ")+storageErr).FontSize(11).TextColor(t.Warning)
 }
 
 // statusDot draws the small colored circle that stands for a status everywhere.
@@ -124,9 +132,9 @@ func panelMetaLine(p *PanelSpec) string {
 	if p.Type == PanelTypeHTML {
 		kind = "HTML"
 	}
-	parts := []string{fmt.Sprintf("Alle %d s", p.RefreshSeconds), kind}
+	parts := []string{fmt.Sprintf(T("Alle %d s"), p.RefreshSeconds), kind}
 	if p.LastUpdated != "" {
-		parts = append(parts, "Stand "+p.LastUpdated)
+		parts = append(parts, T("Stand ")+p.LastUpdated)
 	}
 	return strings.Join(parts, " · ")
 }

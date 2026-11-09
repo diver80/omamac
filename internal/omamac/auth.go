@@ -78,13 +78,13 @@ func InspectAntigravityAuth(cfg *Config) AntigravityStatus {
 
 	raw, err := os.ReadFile(tokenPath)
 	if err != nil {
-		status.StatusSummary = "Nicht angemeldet – kein Antigravity-Token gefunden"
+		status.StatusSummary = T("Nicht angemeldet – kein Antigravity-Token gefunden")
 		return status
 	}
 
 	var tf agyTokenFile
 	if err := json.Unmarshal(raw, &tf); err != nil {
-		status.StatusSummary = "Antigravity-Token ist ungültig"
+		status.StatusSummary = T("Antigravity-Token ist ungültig")
 		return status
 	}
 
@@ -122,21 +122,21 @@ func InspectAntigravityAuth(cfg *Config) AntigravityStatus {
 		status.Available = true
 		acct := status.AccountEmail
 		if acct == "" {
-			acct = "Antigravity-Konto"
+			acct = T("Antigravity-Konto")
 		}
 		if status.AccountName != "" {
 			acct = fmt.Sprintf("%s (%s)", status.AccountName, acct)
 		}
-		status.StatusSummary = "Angemeldet als " + acct
+		status.StatusSummary = T("Angemeldet als ") + acct
 		if tf.Token.Expiry != "" {
 			if t, err := time.Parse(time.RFC3339, tf.Token.Expiry); err == nil {
-				status.StatusSummary += " · Token vom " + t.Format("02.01.2006 15:04")
+				status.StatusSummary += T(" · Token vom ") + t.Format(T("02.01.2006 15:04"))
 			}
 		}
 	} else if !cliOK {
-		status.StatusSummary = "Token vorhanden, aber das Programm „agy“ fehlt"
+		status.StatusSummary = T("Token vorhanden, aber das Programm „agy“ fehlt")
 	} else {
-		status.StatusSummary = "Antigravity-Token unvollständig – bitte neu anmelden"
+		status.StatusSummary = T("Antigravity-Token unvollständig – bitte neu anmelden")
 	}
 
 	return status

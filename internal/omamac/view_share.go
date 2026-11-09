@@ -24,7 +24,7 @@ func (a *App) openExport(panels []*PanelSpec) {
 		}
 	}
 	if len(a.exportIDs) == 0 {
-		a.toast("Keine eigenen Panels zum Teilen – System-Module werden nicht exportiert")
+		a.toast(T("Keine eigenen Panels zum Teilen – System-Module werden nicht exportiert"))
 		return
 	}
 	a.showExport = true
@@ -63,12 +63,12 @@ func (a *App) renderExportDialog(c *ui.Context) {
 	env := panelEnv(a.Vault, a.Jira)
 	ui.Modal(c.Key("export"), &a.showExport, func() {
 		ui.Column(c).Width(600).Gap(12).Children(func() {
-			title := fmt.Sprintf("%d Panels teilen", len(panels))
+			title := fmt.Sprintf(T("%d Panels teilen"), len(panels))
 			if len(panels) == 1 {
-				title = "„" + panels[0].Title + "“ teilen"
+				title = fmt.Sprintf(T("„%s“ teilen"), panels[0].Title)
 			}
 			ui.Text(c, title).FontSize(18).Bold()
-			ui.Text(c, "Als .omamac-Datei oder über die Zwischenablage, z. B. per Chat. Live-Daten und Zugangswerte werden nie mitgegeben – nur die Namen der Variablen.").
+			ui.Text(c, T("Als .omamac-Datei oder über die Zwischenablage, z. B. per Chat. Live-Daten und Zugangswerte werden nie mitgegeben – nur die Namen der Variablen.")).
 				FontSize(12).TextColor(t.TextMuted)
 
 			blocked := false
@@ -94,9 +94,9 @@ func (a *App) renderExportDialog(c *ui.Context) {
 							ui.Text(c, p.Title).FontSize(12.5).Bold().Grow(1).MinWidth(0).SingleLine()
 							switch {
 							case len(chk.Leaks) > 0:
-								ui.Text(c, "⚠ enthält den Wert von $"+strings.Join(chk.Leaks, ", $")).FontSize(11.5).TextColor(t.Danger)
+								ui.Text(c, T("⚠ enthält den Wert von $")+strings.Join(chk.Leaks, ", $")).FontSize(11.5).TextColor(t.Danger)
 							case len(chk.Tokens) > 0:
-								ui.Text(c, "⚠ enthält einen Token ("+chk.Tokens[0]+")").FontSize(11.5).TextColor(t.Danger)
+								ui.Text(c, T("⚠ enthält einen Token (")+chk.Tokens[0]+")").FontSize(11.5).TextColor(t.Danger)
 							default:
 								pillBadge(c, string(p.Type), t.Accent.Alpha(0.15), t.Accent)
 							}
@@ -107,7 +107,7 @@ func (a *App) renderExportDialog(c *ui.Context) {
 
 			if blocked {
 				ui.Row(c).FillWidth().Padding(8, 12).Radius(8).Background(t.Danger.Alpha(0.10)).Children(func() {
-					ui.Text(c, "Markierte Panels enthalten einen Zugangswert im Klartext und werden so nicht geteilt. Ersetze ihn per „Mit KI anpassen“ durch die Variable, z. B. „Nutze $NAME statt des eingetragenen Tokens“.").
+					ui.Text(c, T("Markierte Panels enthalten einen Zugangswert im Klartext und werden so nicht geteilt. Ersetze ihn per „Mit KI anpassen“ durch die Variable, z. B. „Nutze $NAME statt des eingetragenen Tokens“.")).
 						FontSize(12).TextColor(t.Danger).FillWidth()
 				})
 			}
@@ -117,31 +117,31 @@ func (a *App) renderExportDialog(c *ui.Context) {
 					names = append(names, "$"+v)
 				}
 				sort.Strings(names)
-				ui.Text(c, "Der Empfänger braucht diese Variablen im Tresor (ohne Werte): "+strings.Join(names, ", ")).FontSize(12).FillWidth()
+				ui.Text(c, T("Der Empfänger braucht diese Variablen im Tresor (ohne Werte): ")+strings.Join(names, ", ")).FontSize(12).FillWidth()
 			}
 			if len(hosts) > 0 {
-				ui.Text(c, "Enthält diese Adressen – prüfe, ob du sie weitergeben möchtest: "+strings.Join(hosts, ", ")).FontSize(12).TextColor(t.Warning).FillWidth()
+				ui.Text(c, T("Enthält diese Adressen – prüfe, ob du sie weitergeben möchtest: ")+strings.Join(hosts, ", ")).FontSize(12).TextColor(t.Warning).FillWidth()
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Switch(c.Key("export-history"), &a.exportHistory)
-				ui.Text(c, "KI-Verlauf mitgeben (die Sätze, mit denen das Panel entstand)").FontSize(12)
+				ui.Text(c, T("KI-Verlauf mitgeben (die Sätze, mit denen das Panel entstand)")).FontSize(12)
 			})
 
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c.Key("export-cancel"), "Abbrechen").Clicked() {
+				if ui.Button(c.Key("export-cancel"), T("Abbrechen")).Clicked() {
 					a.showExport = false
 				}
-				if ui.Button(c.Key("export-clip"), "In Zwischenablage").Disabled(blocked).Clicked() {
+				if ui.Button(c.Key("export-clip"), T("In Zwischenablage")).Disabled(blocked).Clicked() {
 					if b, err := a.exportBundle(); err != nil {
 						a.toast("⚠️ " + err.Error())
 					} else {
 						c.WriteClipboard(string(b.Marshal()))
 						a.showExport = false
-						a.toast(fmt.Sprintf("%d Panel(s) in der Zwischenablage – zum Einfügen: Panels → ⋯ → Aus Zwischenablage importieren", len(b.Panels)))
+						a.toast(fmt.Sprintf(T("%d Panel(s) in der Zwischenablage – zum Einfügen: Panels → ⋯ → Aus Zwischenablage importieren"), len(b.Panels)))
 					}
 				}
-				if ui.PrimaryButton(c.Key("export-file"), "Als Datei sichern …").Disabled(blocked).Clicked() {
+				if ui.PrimaryButton(c.Key("export-file"), T("Als Datei sichern …")).Disabled(blocked).Clicked() {
 					a.saveExportFile()
 				}
 			})
@@ -163,9 +163,9 @@ func (a *App) saveExportFile() {
 		home, _ := os.UserHomeDir()
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 			Parent:            a.studioWin,
-			Title:             "Panels teilen",
+			Title:             T("Panels teilen"),
 			DefaultPath:       filepath.Join(home, "Desktop", name),
-			Filters:           []mygo.FileFilter{{Name: "OmaMac-Panels", Extensions: []string{ShareFileExt}}},
+			Filters:           []mygo.FileFilter{{Name: T("OmaMac-Panels"), Extensions: []string{ShareFileExt}}},
 			CreateDirectories: true,
 		})
 		if err != nil || path == "" {
@@ -177,10 +177,10 @@ func (a *App) saveExportFile() {
 		err = os.WriteFile(path, data, 0o644)
 		a.updateUI(func() {
 			if err != nil {
-				a.toast("⚠️ Nicht gespeichert: " + err.Error())
+				a.toast(T("⚠️ Nicht gespeichert: ") + err.Error())
 				return
 			}
-			a.toast(fmt.Sprintf("%d Panel(s) gesichert: %s", len(b.Panels), filepath.Base(path)))
+			a.toast(fmt.Sprintf(T("%d Panel(s) gesichert: %s"), len(b.Panels), filepath.Base(path)))
 		})
 	}()
 }
@@ -192,7 +192,7 @@ func (a *App) saveExportFile() {
 func (a *App) openImportData(data []byte, source string) {
 	b, err := ParseShareBundle(data)
 	if err != nil {
-		a.toast("⚠️ Import aus " + source + ": " + err.Error())
+		a.toast(T("⚠️ Import aus ") + source + ": " + err.Error())
 		return
 	}
 	a.importBundle, a.importSource = b, source
@@ -226,8 +226,8 @@ func (a *App) pickImportFile() {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:  a.studioWin,
-			Title:   "Panels importieren",
-			Filters: []mygo.FileFilter{{Name: "OmaMac-Panels", Extensions: []string{ShareFileExt, "json"}}},
+			Title:   T("Panels importieren"),
+			Filters: []mygo.FileFilter{{Name: T("OmaMac-Panels"), Extensions: []string{ShareFileExt, "json"}}},
 		})
 		if err != nil || len(paths) == 0 {
 			return
@@ -258,19 +258,19 @@ func (a *App) renderImportDialog(c *ui.Context) {
 	known := a.knownVariables()
 	ui.Modal(c.Key("import"), &a.showImport, func() {
 		ui.Column(c).Width(640).Gap(12).Children(func() {
-			title := fmt.Sprintf("%d Panels importieren", len(b.Panels))
+			title := fmt.Sprintf(T("%d Panels importieren"), len(b.Panels))
 			if len(b.Panels) == 1 {
-				title = "„" + b.Panels[0].Title + "“ importieren"
+				title = fmt.Sprintf(T("„%s“ importieren"), b.Panels[0].Title)
 			}
 			ui.Text(c, title).FontSize(18).Bold()
-			src := "Aus " + a.importSource
+			src := T("Aus ") + a.importSource
 			if b.AppVersion != "" {
-				src += " · erstellt mit OmaMac " + b.AppVersion
+				src += T(" · erstellt mit OmaMac ") + b.AppVersion
 			}
 			ui.Text(c, src).FontSize(11.5).TextColor(t.TextMuted)
 
 			ui.Row(c).FillWidth().Padding(8, 12).Radius(8).Background(t.Warning.Alpha(0.12)).Children(func() {
-				ui.Text(c, "Panels führen Befehle auf deinem Mac aus. Sie kommen ausgeschaltet an – sieh dir die Befehle an und schalte ein Panel erst dann in der Menüleiste ein.").
+				ui.Text(c, T("Panels führen Befehle auf deinem Mac aus. Sie kommen ausgeschaltet an – sieh dir die Befehle an und schalte ein Panel erst dann in der Menüleiste ein.")).
 					FontSize(12).FillWidth()
 			})
 
@@ -291,13 +291,13 @@ func (a *App) renderImportDialog(c *ui.Context) {
 							})
 							if cmd := strings.TrimSpace(p.Command); cmd != "" {
 								open := a.importShowCmd[idx]
-								ui.Collapsible(c, fmt.Sprintf("Befehl ansehen (%d Zeilen, alle %d s)", strings.Count(cmd, "\n")+1, p.RefreshSeconds), &open, func() {
+								ui.Collapsible(c, fmt.Sprintf(T("Befehl ansehen (%d Zeilen, alle %d s)"), strings.Count(cmd, "\n")+1, p.RefreshSeconds), &open, func() {
 									codeBlock(c, cmd)
 								})
 								a.importShowCmd[idx] = open
 							}
 							if n := len(p.PromptHistory); n > 0 {
-								ui.Text(c, fmt.Sprintf("KI-Verlauf: %d Schritte – „%s“", n, truncateStr(p.PromptHistory[0].Prompt, 80))).FontSize(11.5).TextColor(t.TextMuted)
+								ui.Text(c, fmt.Sprintf(T("KI-Verlauf: %d Schritte – „%s“"), n, truncateStr(p.PromptHistory[0].Prompt, 80))).FontSize(11.5).TextColor(t.TextMuted)
 							}
 						})
 					}
@@ -306,7 +306,7 @@ func (a *App) renderImportDialog(c *ui.Context) {
 
 			if len(b.Variables) > 0 {
 				ui.Column(c).FillWidth().Gap(3).Children(func() {
-					ui.Text(c, "Benötigte Variablen").FontSize(12).Bold()
+					ui.Text(c, T("Benötigte Variablen")).FontSize(12).Bold()
 					for i, v := range b.Variables {
 						ui.Row(c.Key(fmt.Sprintf("import-v-%d", i))).FillWidth().Gap(8).Children(func() {
 							if known[v.Name] {
@@ -317,7 +317,7 @@ func (a *App) renderImportDialog(c *ui.Context) {
 							ui.Text(c, "$"+v.Name).Font("monospace").FontSize(11.5)
 							hint := v.Description
 							if !known[v.Name] {
-								hint = "fehlt – unter Einstellungen → Tresor anlegen"
+								hint = T("fehlt – unter Einstellungen → Tresor anlegen")
 								if v.Description != "" {
 									hint += " (" + v.Description + ")"
 								}
@@ -330,10 +330,10 @@ func (a *App) renderImportDialog(c *ui.Context) {
 
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c.Key("import-cancel"), "Abbrechen").Clicked() {
+				if ui.Button(c.Key("import-cancel"), T("Abbrechen")).Clicked() {
 					a.showImport = false
 				}
-				if ui.PrimaryButton(c.Key("import-ok"), "Importieren").Clicked() {
+				if ui.PrimaryButton(c.Key("import-ok"), T("Importieren")).Clicked() {
 					a.importPanels(b)
 				}
 			})
@@ -349,7 +349,7 @@ func (a *App) importPanels(b *ShareBundle) {
 		p.ID = a.uniquePanelID(p.ID, p.Title)
 		p.Enabled, p.PinnedFloating = false, false
 		p.PromptHistory = append(append([]PromptStep(nil), src.PromptHistory...), PromptStep{
-			Step: len(src.PromptHistory) + 1, Prompt: "Importiert aus " + a.importSource,
+			Step: len(src.PromptHistory) + 1, Prompt: T("Importiert aus ") + a.importSource,
 			Provider: "import", Timestamp: time.Now().Format("15:04:05"),
 		})
 		_ = SavePanel(a.Config.PanelsDir, &p)
@@ -362,7 +362,7 @@ func (a *App) importPanels(b *ShareBundle) {
 	}
 	a.showImport = false
 	a.importBundle = nil
-	a.toast(fmt.Sprintf("%d Panel(s) importiert – ausgeschaltet; zum Anzeigen „Menüleiste“ einschalten", len(b.Panels)))
+	a.toast(fmt.Sprintf(T("%d Panel(s) importiert – ausgeschaltet; zum Anzeigen „Menüleiste“ einschalten"), len(b.Panels)))
 }
 
 // uniquePanelID keeps id when it is free, else derives a free one.
@@ -383,5 +383,5 @@ func (a *App) uniquePanelID(id, title string) string {
 
 // importFromClipboard previews the panels on the clipboard (text copied from a chat, say).
 func (a *App) importFromClipboard() {
-	a.openImportData([]byte(mygo.Clipboard.ReadText()), "der Zwischenablage")
+	a.openImportData([]byte(mygo.Clipboard.ReadText()), T("der Zwischenablage"))
 }

@@ -190,7 +190,7 @@ func (p *PanelSpec) TrayLabel() string {
 	}
 	badge := strings.TrimSpace(p.BadgeText)
 	if badge == "" {
-		badge = p.Title
+		badge = T(p.Title)
 	}
 	if own := strings.TrimSpace(p.MenuBarText); own != "" {
 		badge = strings.TrimSpace(strings.ReplaceAll(own, MenuBarStatusToken, strings.TrimSpace(p.BadgeText)))
@@ -375,7 +375,7 @@ func BuiltinSystemPanels() []*PanelSpec {
 		{
 			ID:             "00-jira-quick-access",
 			Title:          "Jira Quick-Access",
-			Subtitle:       "JQL-Counter über alle Instanzen • Kanban-Board • Ticket-Viewer",
+			Subtitle:       T("JQL-Counter über alle Instanzen • Kanban-Board • Ticket-Viewer"),
 			Kind:           "app",
 			GridSize:       "6x2",
 			Icon:           "🎫",
@@ -394,7 +394,7 @@ func BuiltinSystemPanels() []*PanelSpec {
 		{
 			ID:             "00-atlassian-status",
 			Title:          "Atlassian Status",
-			Subtitle:       "Live-Status von 8 Cloud-Diensten (Jira, Confluence, Bitbucket, Rovo …)",
+			Subtitle:       T("Live-Status von 8 Cloud-Diensten (Jira, Confluence, Bitbucket, Rovo …)"),
 			Kind:           "panel",
 			GridSize:       "6x2",
 			Icon:           "🌐",
@@ -410,7 +410,7 @@ func BuiltinSystemPanels() []*PanelSpec {
 			Height:         420,
 			Metrics: []PanelMetric{
 				{Label: "Atlassian Cloud", Value: "8 / 8 OK", Unit: "operational", Status: "ok", Progress: 100},
-				{Label: "Aktive Störungen", Value: "0", Unit: "live", Status: "ok", Progress: 100},
+				{Label: T("Aktive Störungen"), Value: "0", Unit: "live", Status: "ok", Progress: 100},
 			},
 			Rows: []PanelRow{
 				{Left: "Jira Software", Right: "All Systems Operational", Badge: "OK", Status: "ok", URL: "https://jira-software.status.atlassian.com"},
@@ -429,12 +429,12 @@ func BuiltinSystemPanels() []*PanelSpec {
 		// Added in 1.7: off at first, they need Jira instances of Jira Quick-Access.
 		{
 			ID:             "00-jira-activity",
-			Title:          "Jira Aktivität",
-			Subtitle:       "Activity Stream aller Jira-Instanzen, wie das Gadget in Data Center",
+			Title:          T("Jira Aktivität"),
+			Subtitle:       T("Activity Stream aller Jira-Instanzen, wie das Gadget in Data Center"),
 			Kind:           "app",
 			GridSize:       "3x3",
 			Icon:           "📰",
-			BadgeText:      "Aktivität …",
+			BadgeText:      T("Aktivität …"),
 			Status:         "info",
 			Type:           PanelTypeNative,
 			IsBuiltin:      true,
@@ -446,12 +446,12 @@ func BuiltinSystemPanels() []*PanelSpec {
 		},
 		{
 			ID:             "00-jira-week",
-			Title:          "Jira Woche",
-			Subtitle:       "Kanban der Woche über alle Jira-Instanzen – eine Spalte je Tag, Woche für Woche blättern",
+			Title:          T("Jira Woche"),
+			Subtitle:       T("Kanban der Woche über alle Jira-Instanzen – eine Spalte je Tag, Woche für Woche blättern"),
 			Kind:           "app",
 			GridSize:       "6x2",
 			Icon:           "📅",
-			BadgeText:      "Woche …",
+			BadgeText:      T("Woche …"),
 			Status:         "info",
 			Type:           PanelTypeNative,
 			IsBuiltin:      true,
@@ -476,7 +476,7 @@ func StarterPanels() []*PanelSpec {
 		{
 			ID:             "01-sys-pulse",
 			Title:          "Apple Silicon System Pulse",
-			Subtitle:       "CPU, Speicher und SSD dieses Macs",
+			Subtitle:       T("CPU, Speicher und SSD dieses Macs"),
 			Icon:           "⚡",
 			BadgeText:      "Sys OK",
 			Status:         "ok",
@@ -508,7 +508,7 @@ func StarterPanels() []*PanelSpec {
 		{
 			ID:             "02-ai-agents",
 			Title:          "AI Coding Agents & Antigravity",
-			Subtitle:       "Anmeldestatus von Gemini (Antigravity) und Claude",
+			Subtitle:       T("Anmeldestatus von Gemini (Antigravity) und Claude"),
 			Icon:           "🤖",
 			BadgeText:      "AI Ready",
 			Status:         "ok",
@@ -538,7 +538,7 @@ func StarterPanels() []*PanelSpec {
 		{
 			ID:             "03-git-radar",
 			Title:          "Dev Workspace Git Radar",
-			Subtitle:       "Git-Status der Projekte im Workspace (HTML)",
+			Subtitle:       T("Git-Status der Projekte im Workspace (HTML)"),
 			Icon:           "🌿",
 			BadgeText:      "Git Radar",
 			Status:         "ok",
@@ -558,8 +558,8 @@ func StarterPanels() []*PanelSpec {
 		},
 		{
 			ID:             "04-mydealz-3d",
-			Title:          "mydealz 3D-Drucker & Idealo Radar",
-			Subtitle:       "3D-Drucker-Deals von mydealz.de mit Preisalarm ($MYDEALZ_KEYWORD)",
+			Title:          T("mydealz 3D-Drucker & Idealo Radar"),
+			Subtitle:       T("3D-Drucker-Deals von mydealz.de mit Preisalarm ($MYDEALZ_KEYWORD)"),
 			Icon:           "🖨️",
 			BadgeText:      "3D Deals Live",
 			Status:         "ok",
@@ -571,18 +571,18 @@ func StarterPanels() []*PanelSpec {
 			Height:         410,
 			Command:        Mydealz3DPrinterCommand(),
 			Metrics: []PanelMetric{
-				{Label: "mydealz 3D-Drucker", Value: "29 Deals", Unit: "live", Status: "ok", Progress: 85},
+				{Label: T("mydealz 3D-Drucker"), Value: "29 Deals", Unit: "live", Status: "ok", Progress: 85},
 				{Label: "Target Filter ($MYDEALZ_KEYWORD)", Value: "Bambu Lab", Unit: "alert", Status: "info", Progress: 100},
 			},
 			Rows: []PanelRow{
-				{Left: "Bambu Lab Black Friday: 3D-Drucker (X/P/A)", Right: "mydealz ↗", Badge: "HOT 🔥", Status: "ok", URL: "https://www.mydealz.de/gruppe/3d-drucker"},
-				{Left: "Bambu Lab: 2000 Credits (20€–50€ Wert)", Right: "mydealz ↗", Badge: "DEAL", Status: "ok", URL: "https://www.mydealz.de/gruppe/3d-drucker"},
+				{Left: T("Bambu Lab Black Friday: 3D-Drucker (X/P/A)"), Right: "mydealz ↗", Badge: "HOT 🔥", Status: "ok", URL: "https://www.mydealz.de/gruppe/3d-drucker"},
+				{Left: T("Bambu Lab: 2000 Credits (20€–50€ Wert)"), Right: "mydealz ↗", Badge: "DEAL", Status: "ok", URL: "https://www.mydealz.de/gruppe/3d-drucker"},
 				{Left: "GEEETECH PETG Filament 1kg 1.75mm", Right: "mydealz ↗", Badge: "FILAMENT", Status: "info", URL: "https://www.mydealz.de/gruppe/3d-drucker"},
-				{Left: "Idealo Preiswächter (Bambu Lab P1S)", Right: "Target ≤ 499€", Badge: "WATCH", Status: "warn", URL: "https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=Bambu+Lab+P1S"},
+				{Left: T("Idealo Preiswächter (Bambu Lab P1S)"), Right: "Target ≤ 499€", Badge: "WATCH", Status: "warn", URL: "https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=Bambu+Lab+P1S"},
 			},
 			Actions: []PanelAction{
-				{Label: "mydealz 3D-Drucker ↗", URL: "https://www.mydealz.de/gruppe/3d-drucker", Style: "primary"},
-				{Label: "Idealo 3D-Drucker ↗", URL: "https://www.idealo.de/preisvergleich/ProductCategory/19117.html", Style: "default"},
+				{Label: T("mydealz 3D-Drucker ↗"), URL: "https://www.mydealz.de/gruppe/3d-drucker", Style: "primary"},
+				{Label: T("Idealo 3D-Drucker ↗"), URL: "https://www.idealo.de/preisvergleich/ProductCategory/19117.html", Style: "default"},
 			},
 			PromptHistory: []PromptStep{
 				{Step: 1, Prompt: "Create a status panel listing current 3D printer deals from mydealz and monitoring Idealo target price", Provider: "gemini", Model: "gemini-4-argon-medium", Timestamp: now},
@@ -734,24 +734,24 @@ func StoreCatalog() []StoreCategoryItem {
 			Category: "System",
 			Kind:     "widget",
 			GridSize: "6x2",
-			Title:    "CPU, Speicher & SSD",
-			Subtitle: "Top-Prozesse, Auslastung und SSD-Belegung",
+			Title:    T("CPU, Speicher & SSD"),
+			Subtitle: T("Top-Prozesse, Auslastung und SSD-Belegung"),
 			Icon:     "⚡",
 			Prompt:   "Create a 6x2 system widget with CPU load, memory pressure, disk usage and top processes",
 			Spec:     StarterPanels()[0],
 		},
 		{
-			Category: "Mac & Geräte",
+			Category: T("Mac & Geräte"),
 			Kind:     "widget",
 			GridSize: "3x3",
-			Title:    "Akku, Wiedergabe & AirPods",
-			Subtitle: "Akkustand, Ladezustand und Audio-Ausgabe",
+			Title:    T("Akku, Wiedergabe & AirPods"),
+			Subtitle: T("Akkustand, Ladezustand und Audio-Ausgabe"),
 			Icon:     "🔋",
 			Prompt:   "Create a 3x3 Mac device widget showing battery percentage, charging state and audio output",
 			Spec: &PanelSpec{
 				ID:             "store-mac-battery",
-				Title:          "Akku & Audio",
-				Subtitle:       "Akkustand und Stromquelle des MacBooks",
+				Title:          T("Akku & Audio"),
+				Subtitle:       T("Akkustand und Stromquelle des MacBooks"),
 				Kind:           "widget",
 				GridSize:       "3x3",
 				Icon:           "🔋",
@@ -776,24 +776,24 @@ func StoreCatalog() []StoreCategoryItem {
 			Category: "Web & Deals",
 			Kind:     "panel",
 			GridSize: "6x2",
-			Title:    "mydealz 3D-Drucker & Idealo Radar",
-			Subtitle: "Aktuelle Deals von mydealz.de und Idealo-Preiswächter",
+			Title:    T("mydealz 3D-Drucker & Idealo Radar"),
+			Subtitle: T("Aktuelle Deals von mydealz.de und Idealo-Preiswächter"),
 			Icon:     "🖨️",
 			Prompt:   "Create a 6x2 web data panel for mydealz 3D-Drucker deals and Idealo target price ($IDEALO_TARGET_PRICE)",
 			Spec:     StarterPanels()[3],
 		},
 		{
-			Category: "Persönlich",
+			Category: T("Persönlich"),
 			Kind:     "app",
 			GridSize: "3x3",
-			Title:    "Fokus-Timer",
-			Subtitle: "25-Minuten-Pomodoro mit Tages-Serie",
+			Title:    T("Fokus-Timer"),
+			Subtitle: T("25-Minuten-Pomodoro mit Tages-Serie"),
 			Icon:     "⏱️",
 			Prompt:   "Create a 3x3 personal focus timer & habit tracker mini-app with start/reset actions",
 			Spec: &PanelSpec{
 				ID:             "store-focus-timer",
-				Title:          "Fokus-Timer",
-				Subtitle:       "25-Minuten-Pomodoro mit Tages-Serie",
+				Title:          T("Fokus-Timer"),
+				Subtitle:       T("25-Minuten-Pomodoro mit Tages-Serie"),
 				Kind:           "app",
 				GridSize:       "3x3",
 				Icon:           "⏱️",
@@ -818,17 +818,17 @@ func StoreCatalog() []StoreCategoryItem {
 			},
 		},
 		{
-			Category: "Spaß",
+			Category: T("Spaß"),
 			Kind:     "widget",
 			GridSize: "3x3",
-			Title:    "Pixel-Eule",
-			Subtitle: "Retro-Eule für den Desktop – klicken zum Füttern",
+			Title:    T("Pixel-Eule"),
+			Subtitle: T("Retro-Eule für den Desktop – klicken zum Füttern"),
 			Icon:     "🦉",
 			Prompt:   "Create a 3x3 interactive pixel-art owl desktop widget that can be fed cookies on click",
 			Spec: &PanelSpec{
 				ID:             "store-pixel-owl",
-				Title:          "Pixel-Eule",
-				Subtitle:       "Retro-Eule – klicken zum Füttern",
+				Title:          T("Pixel-Eule"),
+				Subtitle:       T("Retro-Eule – klicken zum Füttern"),
 				Kind:           "widget",
 				GridSize:       "3x3",
 				Icon:           "🦉",

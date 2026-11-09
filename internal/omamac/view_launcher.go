@@ -68,13 +68,13 @@ func (a *App) launcherItems(query string) []launchItem {
 	for _, p := range a.panels {
 		p := p
 		all = append(all, launchItem{
-			kind: launchPanel, key: "panel-" + p.ID, title: p.Title, subtitle: panelStatusText(p),
+			kind: launchPanel, key: "panel-" + p.ID, title: T(p.Title), subtitle: panelStatusText(p),
 			glyph: p.Icon, panel: p,
 			run: func() {
 				p.Enabled = !p.Enabled
-				msg := "„" + p.Title + "“ aus der Menüleiste genommen"
+				msg := T("„") + p.Title + T("“ aus der Menüleiste genommen")
 				if p.Enabled {
-					msg = "„" + p.Title + "“ in der Menüleiste"
+					msg = T("„") + p.Title + T("“ in der Menüleiste")
 				}
 				a.persistPanelToggle(p, msg)
 			},
@@ -83,7 +83,7 @@ func (a *App) launcherItems(query string) []launchItem {
 	for _, tl := range windowTiles {
 		tl := tl
 		all = append(all, launchItem{
-			kind: launchWindow, key: "tile-" + string(tl.layout), title: tl.title, glyph: tl.glyph,
+			kind: launchWindow, key: "tile-" + string(tl.layout), title: T(tl.title), glyph: tl.glyph,
 			run: func() {
 				a.hideLauncher()
 				disp := mygo.Screen.PrimaryDisplay()
@@ -92,9 +92,9 @@ func (a *App) launcherItems(query string) []launchItem {
 		})
 	}
 	all = append(all,
-		launchItem{kind: launchOmaMac, key: "omamac-main", title: "Hauptfenster öffnen", glyph: "⌘", run: a.showStudio},
-		launchItem{kind: launchOmaMac, key: "omamac-new", title: "Neues Panel …", glyph: "+", run: func() { a.openCreate("") }},
-		launchItem{kind: launchOmaMac, key: "omamac-settings", title: "Einstellungen", glyph: "⚙", run: func() {
+		launchItem{kind: launchOmaMac, key: "omamac-main", title: T("Hauptfenster öffnen"), glyph: "⌘", run: a.showStudio},
+		launchItem{kind: launchOmaMac, key: "omamac-new", title: T("Neues Panel …"), glyph: "+", run: func() { a.openCreate("") }},
+		launchItem{kind: launchOmaMac, key: "omamac-settings", title: T("Einstellungen"), glyph: "⚙", run: func() {
 			a.activeTab = TabSettings
 			a.showStudio()
 		}},
@@ -139,8 +139,8 @@ func (a *App) launcherItems(query string) []launchItem {
 	}
 	prompt := strings.TrimSpace(query)
 	items = append(items, launchItem{
-		kind: launchAI, key: "ai-create", title: "Neues Panel mit KI: „" + prompt + "“", glyph: "✨",
-		subtitle: "Öffnet den Dialog im Hauptfenster",
+		kind: launchAI, key: "ai-create", title: T("Neues Panel mit KI: „") + prompt + T("“"), glyph: "✨",
+		subtitle: T("Öffnet den Dialog im Hauptfenster"),
 		run:      func() { a.openCreate(prompt) },
 	})
 	return items
@@ -187,7 +187,7 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(12, 12, 8, 12).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
 			in := ui.SearchField(c.Key("wal-q"), &a.launcherQuery).AutoFocus().
-				Placeholder("Programme, Panels, Fenster – oder ein neues Panel beschreiben").
+				Placeholder(T("Programme, Panels, Fenster – oder ein neues Panel beschreiben")).
 				FontSize(15).Grow(1)
 			if in.Changed() {
 				a.launchSel = 0
@@ -220,26 +220,26 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 		ui.List(c.Key("wal-list"), &a.launchList, len(items), func(i int) {
 			it := items[i]
 			if grouped && (i == 0 || items[i-1].kind != it.kind) {
-				ui.Text(c, launchSectionTitles[it.kind]).FontSize(10.5).Bold().TextColor(t.TextMuted).Padding(10, 10, 4, 10)
+				ui.Text(c, T(launchSectionTitles[it.kind])).FontSize(10.5).Bold().TextColor(t.TextMuted).Padding(10, 10, 4, 10)
 			}
 			a.renderLaunchRow(c, it, i == a.launchSel, !grouped)
 		}).Grow(1).FillWidth()
 
 		// What the keys do, for the row chosen
 		ui.Row(c).FillWidth().Padding(4, 6, 0, 6).Gap(14).AlignItems(ui.Center).Children(func() {
-			action := "öffnen"
+			action := T("öffnen")
 			if a.launchSel < len(items) {
 				switch items[a.launchSel].kind {
 				case launchPanel:
-					action = "Menüleiste an/aus"
+					action = T("Menüleiste an/aus")
 				case launchWindow:
-					action = "anordnen"
+					action = T("anordnen")
 				case launchApp:
-					action = "starten"
+					action = T("starten")
 				}
 			}
 			ui.Spacer(c)
-			for _, hint := range []string{"↑↓ auswählen", "↵ " + action, "esc schließen"} {
+			for _, hint := range []string{T("↑↓ auswählen"), "↵ " + action, T("esc schließen")} {
 				ui.Text(c, hint).FontSize(11).TextColor(t.TextMuted)
 			}
 		})
@@ -276,13 +276,13 @@ func (a *App) renderLaunchRow(c *ui.Context, it launchItem, selected, showKind b
 			}
 		})
 		if showKind {
-			ui.Text(c, launchKindLabels[it.kind]).FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, T(launchKindLabels[it.kind])).FontSize(11).TextColor(t.TextMuted)
 		}
 		if p := it.panel; p != nil {
-			if ui.Switch(c.Key("launch-sw-"+p.ID), &p.Enabled).Label("Menüleiste").Changed() {
-				msg := "„" + p.Title + "“ aus der Menüleiste genommen"
+			if ui.Switch(c.Key("launch-sw-"+p.ID), &p.Enabled).Label(T("Menüleiste")).Changed() {
+				msg := T("„") + p.Title + T("“ aus der Menüleiste genommen")
 				if p.Enabled {
-					msg = "„" + p.Title + "“ in der Menüleiste"
+					msg = T("„") + p.Title + T("“ in der Menüleiste")
 				}
 				a.persistPanelToggle(p, msg)
 			}

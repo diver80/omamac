@@ -32,20 +32,20 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 		// Header: what it is and how it is doing
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-				ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().SingleLine()
+				ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().SingleLine()
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					statusDot(c, p.Status)
 					ui.Text(c, panelStatusText(p)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
 			})
-			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip("Jetzt aktualisieren").Clicked() {
+			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip(T("Jetzt aktualisieren")).Clicked() {
 				a.refreshPanelAsync(p, "")
 			}
 			closeButton(c, "pop-close-"+p.ID, onClose)
 		})
 
 		if p.Subtitle != "" {
-			ui.Text(c, p.Subtitle).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Text(c, T(p.Subtitle)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		}
 
 		// Metrics (two per row)

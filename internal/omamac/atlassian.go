@@ -358,15 +358,15 @@ func (j *JiraModuleState) syncPanelSpecFromIssues(p *PanelSpec, issues []JiraIss
 	}
 	total := len(issues)
 	p.LastUpdated = time.Now().Format("15:04:05")
-	p.BadgeText = fmt.Sprintf("%d Tickets (%d Prog)", total, progCnt)
+	p.BadgeText = fmt.Sprintf(T("%d Tickets (%d Prog)"), total, progCnt)
 	if errCount > 0 && total == 0 {
 		p.Status = "warn"
 	} else {
 		p.Status = "ok"
 	}
 	p.Metrics = []PanelMetric{
-		{Label: "Gesamt (JQL)", Value: fmt.Sprintf("%d", total), Unit: "Tickets", Status: "info", Progress: float64(minInt(total*5, 100))},
-		{Label: "To Do / In Arbeit", Value: fmt.Sprintf("%d / %d", todoCnt, progCnt), Unit: fmt.Sprintf("%d Done", doneCnt), Status: "ok", Progress: float64(minInt(progCnt*20, 100))},
+		{Label: T("Gesamt (JQL)"), Value: fmt.Sprintf("%d", total), Unit: "Tickets", Status: "info", Progress: float64(minInt(total*5, 100))},
+		{Label: T("To Do / In Arbeit"), Value: fmt.Sprintf("%d / %d", todoCnt, progCnt), Unit: fmt.Sprintf("%d Done", doneCnt), Status: "ok", Progress: float64(minInt(progCnt*20, 100))},
 	}
 	var rows []PanelRow
 	for idx, iss := range issues {
@@ -563,10 +563,10 @@ func defaultDemoJiraIssues() []JiraIssue {
 	return []JiraIssue{
 		{
 			InstanceID:   "demo",
-			InstanceName: "Privat",
+			InstanceName: T("Privat"),
 			BaseURL:      "https://example.atlassian.net",
 			Key:          "OMAMAC-101",
-			Summary:      "Jira Quick-Access & Atlassian Status als native System-Module integrieren",
+			Summary:      T("Jira Quick-Access & Atlassian Status als native System-Module integrieren"),
 			StatusName:   "In Progress",
 			CategoryKey:  "indeterminate",
 			Priority:     "High",
@@ -575,10 +575,10 @@ func defaultDemoJiraIssues() []JiraIssue {
 		},
 		{
 			InstanceID:   "demo",
-			InstanceName: "Kunde A",
+			InstanceName: T("Kunde A"),
 			BaseURL:      "https://kunde-a.atlassian.net",
 			Key:          "CLOUD-402",
-			Summary:      "JQL Counter & 3-Spalten Kanban-Board direkt im Popover bereitstellen",
+			Summary:      T("JQL Counter & 3-Spalten Kanban-Board direkt im Popover bereitstellen"),
 			StatusName:   "To Do",
 			CategoryKey:  "new",
 			Priority:     "Medium",
@@ -587,10 +587,10 @@ func defaultDemoJiraIssues() []JiraIssue {
 		},
 		{
 			InstanceID:   "demo",
-			InstanceName: "Kunde B",
+			InstanceName: T("Kunde B"),
 			BaseURL:      "https://kunde-b.atlassian.net",
 			Key:          "UAT-88",
-			Summary:      "Automatischer Import aus ~/.jira-quick-access/config.json abgeschlossen",
+			Summary:      T("Automatischer Import aus ~/.jira-quick-access/config.json abgeschlossen"),
 			StatusName:   "Done",
 			CategoryKey:  "done",
 			Priority:     "High",
@@ -676,8 +676,8 @@ func RefreshAtlassianStatusPanel(ctx context.Context, p *PanelSpec) {
 			unreachableCnt++
 			rows = append(rows, PanelRow{
 				Left:   r.name,
-				Right:  "nicht erreichbar ↗",
-				Badge:  "UNBEKANNT",
+				Right:  T("nicht erreichbar ↗"),
+				Badge:  T("UNBEKANNT"),
 				Status: "info",
 				URL:    r.url,
 			})
@@ -729,14 +729,14 @@ func RefreshAtlassianStatusPanel(ctx context.Context, p *PanelSpec) {
 	}
 	p.Metrics = []PanelMetric{
 		{
-			Label:    "Atlassian Cloud Dienste",
+			Label:    T("Atlassian Cloud Dienste"),
 			Value:    fmt.Sprintf("%d / %d", operationalCnt, len(DefaultAtlassianEndpoints)),
 			Unit:     "OK",
 			Status:   worstStatus,
 			Progress: float64(operationalCnt) / float64(len(DefaultAtlassianEndpoints)) * 100,
 		},
 		{
-			Label:    "Aktive Störungen",
+			Label:    T("Aktive Störungen"),
 			Value:    fmt.Sprintf("%d", totalIncidents),
 			Unit:     "Incidents",
 			Status:   map[bool]string{true: "warn", false: "ok"}[totalIncidents > 0],
@@ -832,17 +832,17 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		// Header Row
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
-			ui.Text(c, p.Icon+" "+p.Title).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
+			ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
-			if ui.Button(c.Key("jira-open-board-win"), "⤢").Tooltip("Board in großem Fenster öffnen").Clicked() {
+			if ui.Button(c.Key("jira-open-board-win"), "⤢").Tooltip(T("Board in großem Fenster öffnen")).Clicked() {
 				a.OpenFullJiraBoardWindow(p)
 			}
-			if ui.Button(c.Key("jira-refresh-btn"), "↻").Tooltip("Alle Jira-Instanzen (JQL) jetzt abfragen").Clicked() {
+			if ui.Button(c.Key("jira-refresh-btn"), "↻").Tooltip(T("Alle Jira-Instanzen (JQL) jetzt abfragen")).Clicked() {
 				go func() {
 					j.RefreshJiraPanel(context.Background(), p)
 					a.updateUI(func() {
 						a.syncAllPanelRuntimes()
-						a.toast("Jira JQL für alle Instanzen aktualisiert")
+						a.toast(T("Jira JQL für alle Instanzen aktualisiert"))
 					})
 				}()
 			}
@@ -852,7 +852,7 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 		// Instance Beacons / Filter Pills + View Mode Segmented Control
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 			allActive := j.FilterInstanceID == ""
-			allLbl := fmt.Sprintf("Alle (%d)", totalIssues)
+			allLbl := fmt.Sprintf(T("Alle (%d)"), totalIssues)
 			if allActive {
 				if ui.PrimaryButton(c.Key("jira-inst-all"), allLbl).Clicked() {
 					j.FilterInstanceID = ""
@@ -885,22 +885,22 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 
 			ui.Spacer(c)
 			if lastSync != "" {
-				ui.Text(c, "Stand "+lastSync).FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, T("Stand ")+lastSync).FontSize(10.5).TextColor(t.TextMuted)
 			}
-			ui.Segmented(c.Key("jira-view-mode"), &j.ViewMode, "📋 Liste", "🗂️ Board", "⚙️ JQL")
+			ui.Segmented(c.Key("jira-view-mode"), &j.ViewMode, T("📋 Liste"), "🗂️ Board", "⚙️ JQL")
 		})
 
 		switch j.ViewMode {
 		case 0:
 			// Mode 0: Ticket List + Search + Direct Ticket/Branch/Browser Actions
 			ui.TextInput(c.Key("jira-search-in"), &j.SearchQuery).
-				Placeholder("Tickets filtern nach Key, Titel, Status oder Instanz...").
+				Placeholder(T("Tickets filtern nach Key, Titel, Status oder Instanz...")).
 				FillWidth()
 
 			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
 					if len(issues) == 0 {
-						ui.Text(c, "Keine Tickets für diesen Filter gefunden.").FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, T("Keine Tickets für diesen Filter gefunden.")).FontSize(12).TextColor(t.TextMuted)
 					}
 					for _, iss := range issues {
 						issCopy := iss
@@ -923,16 +923,16 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 								pillBadge(c, issCopy.InstanceName, t.Border.Alpha(0.6), t.TextMuted)
 								pillBadge(c, strings.ToUpper(issCopy.StatusName), catBadgeCol.Alpha(0.20), catBadgeCol)
 								ui.Spacer(c)
-								if ui.Button(c.Key("jira-key-"+issCopy.Key), "📋 Key").Tooltip("Ticket-Key kopieren").Clicked() {
+								if ui.Button(c.Key("jira-key-"+issCopy.Key), "📋 Key").Tooltip(T("Ticket-Key kopieren")).Clicked() {
 									copyToMacClipboard(issCopy.Key)
-									a.toast("Kopiert: " + issCopy.Key)
+									a.toast(T("Kopiert: ") + issCopy.Key)
 								}
-								if ui.Button(c.Key("jira-br-"+issCopy.Key), "🌿 Branch").Tooltip("Git-Branch-Namen kopieren: " + issCopy.GitBranchName()).Clicked() {
+								if ui.Button(c.Key("jira-br-"+issCopy.Key), "🌿 Branch").Tooltip(T("Git-Branch-Namen kopieren: ") + issCopy.GitBranchName()).Clicked() {
 									br := issCopy.GitBranchName()
 									copyToMacClipboard(br)
-									a.toast("Git-Branch kopiert: " + br)
+									a.toast(T("Git-Branch kopiert: ") + br)
 								}
-								if ui.Button(c.Key("jira-ext-"+issCopy.Key), "↗").Tooltip("Im Standard-Browser öffnen").Clicked() {
+								if ui.Button(c.Key("jira-ext-"+issCopy.Key), "↗").Tooltip(T("Im Standard-Browser öffnen")).Clicked() {
 									_ = mygo.Shell.OpenExternal(issCopy.URL)
 								}
 							})
@@ -1003,7 +1003,7 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 	t := c.Theme()
 	j := a.Jira
-	storageNote(c, j.StorageErr, "API-Tokens", "jira_instances.json")
+	storageNote(c, j.StorageErr, T("API-Tokens"), "jira_instances.json")
 	j.mu.RLock()
 	instCounts := make(map[string]int, len(j.InstCounts))
 	for k, v := range j.InstCounts {
@@ -1017,10 +1017,10 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 	ui.Column(c).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "Konfigurierte Jira-Instanzen & JQL").FontSize(12.5).Bold().Grow(1)
-				if ui.Button(c.Key(key+"-reimport-jqa"), "🔄 Aus ~/.jira-quick-access importieren").Clicked() {
+				ui.Text(c, T("Konfigurierte Jira-Instanzen & JQL")).FontSize(12.5).Bold().Grow(1)
+				if ui.Button(c.Key(key+"-reimport-jqa"), T("🔄 Aus ~/.jira-quick-access importieren")).Clicked() {
 					cnt := j.ImportFromJiraQuickAccess()
-					a.jiraInstancesChanged(fmt.Sprintf("%d Jira-Instanzen aus ~/.jira-quick-access importiert!", cnt))
+					a.jiraInstancesChanged(fmt.Sprintf(T("%d Jira-Instanzen aus ~/.jira-quick-access importiert!"), cnt))
 				}
 			})
 
@@ -1037,20 +1037,20 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 						}
 						ui.Text(c, inst.Name+" ("+inst.BaseURL+")").FontSize(12).Bold().Grow(1).SingleLine()
 						if errTxt := instErrors[inst.ID]; errTxt != "" {
-							pillBadge(c, "FEHLER: "+truncateStr(errTxt, 24), t.Danger.Alpha(0.2), t.Danger)
+							pillBadge(c, T("FEHLER: ")+truncateStr(errTxt, 24), t.Danger.Alpha(0.2), t.Danger)
 						} else {
-							pillBadge(c, fmt.Sprintf("%d Tickets", instCounts[inst.ID]), t.Success.Alpha(0.2), t.Success)
+							pillBadge(c, fmt.Sprintf(T("%d Tickets"), instCounts[inst.ID]), t.Success.Alpha(0.2), t.Success)
 						}
 					})
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, "JQL Quick-Access:").FontSize(11).TextColor(t.TextMuted)
 						ui.TextInput(c.Key(key+fmt.Sprintf("-inst-jql-%d", iCopy)), &inst.JQLQuery).Grow(1)
-						if ui.Button(c.Key(key+fmt.Sprintf("-inst-del-%d", iCopy)), "🗑").Tooltip("Instanz entfernen").Clicked() {
+						if ui.Button(c.Key(key+fmt.Sprintf("-inst-del-%d", iCopy)), "🗑").Tooltip(T("Instanz entfernen")).Clicked() {
 							delIdx = iCopy
 						}
-						if ui.Button(c.Key(key+fmt.Sprintf("-inst-save-%d", iCopy)), "Speichern").Clicked() {
+						if ui.Button(c.Key(key+fmt.Sprintf("-inst-save-%d", iCopy)), T("Speichern")).Clicked() {
 							_ = j.Save()
-							a.jiraInstancesChanged("JQL für '" + inst.Name + "' gespeichert & aktualisiert")
+							a.jiraInstancesChanged(T("JQL für '") + inst.Name + T("' gespeichert & aktualisiert"))
 						}
 					})
 				})
@@ -1062,31 +1062,31 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 				j.Instances = append(j.Instances[:delIdx:delIdx], j.Instances[delIdx+1:]...)
 				j.mu.Unlock()
 				_ = j.Save()
-				a.toast("Jira-Instanz '" + removedName + "' entfernt")
+				a.toast(T("Jira-Instanz '") + removedName + T("' entfernt"))
 				a.jiraInstancesChanged("")
 			}
 
 			// Add a new Jira instance (Cloud: E-Mail + API-Token, Data Center: only PAT)
 			ui.Column(c.Key(key+"-new-inst")).
 				FillWidth().Padding(8, 10).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).Gap(6).Children(func() {
-				ui.Text(c, "➕ Neue Jira-Instanz").FontSize(12).Bold()
+				ui.Text(c, T("➕ Neue Jira-Instanz")).FontSize(12).Bold()
 				infoBox(c, func() {
-					ui.Text(c, "Cloud: E-Mail des Atlassian-Kontos und ein API-Token. Data Center: E-Mail leer lassen und einen Personal Access Token eintragen. "+
-						"Der Token kommt in den macOS-Schlüsselbund, nie in eine Datei oder zur KI. Aus dem Namen wird $JIRA_<NAME>_URL/_EMAIL/_API_TOKEN für eigene Panels.").
+					ui.Text(c, T("Cloud: E-Mail des Atlassian-Kontos und ein API-Token. Data Center: E-Mail leer lassen und einen Personal Access Token eintragen. ")+
+						T("Der Token kommt in den macOS-Schlüsselbund, nie in eine Datei oder zur KI. Aus dem Namen wird $JIRA_<NAME>_URL/_EMAIL/_API_TOKEN für eigene Panels.")).
 						FontSize(11).TextColor(t.TextMuted)
-					ui.Link(c.Key(key+"-token-link"), "API-Token bei Atlassian erstellen ↗", "https://id.atlassian.com/manage-profile/security/api-tokens").FontSize(11)
+					ui.Link(c.Key(key+"-token-link"), T("API-Token bei Atlassian erstellen ↗"), "https://id.atlassian.com/manage-profile/security/api-tokens").FontSize(11)
 				})
 				ui.Row(c).FillWidth().Gap(6).Children(func() {
-					ui.TextInput(c.Key(key+"-new-name"), &j.NewInstName).Placeholder("Name (z. B. Firma)").Grow(1)
-					ui.TextInput(c.Key(key+"-new-url"), &j.NewInstURL).Placeholder("https://firma.atlassian.net").Grow(2)
+					ui.TextInput(c.Key(key+"-new-name"), &j.NewInstName).Placeholder(T("Name (z. B. Firma)")).Grow(1)
+					ui.TextInput(c.Key(key+"-new-url"), &j.NewInstURL).Placeholder(T("https://firma.atlassian.net")).Grow(2)
 				})
 				ui.Row(c).FillWidth().Gap(6).Children(func() {
-					ui.TextInput(c.Key(key+"-new-email"), &j.NewInstEmail).Placeholder("E-Mail (leer = Data Center PAT)").Grow(1)
-					ui.TextInput(c.Key(key+"-new-token"), &j.NewInstToken).Placeholder("API-Token / PAT").Password().Grow(1)
+					ui.TextInput(c.Key(key+"-new-email"), &j.NewInstEmail).Placeholder(T("E-Mail (leer = Data Center PAT)")).Grow(1)
+					ui.TextInput(c.Key(key+"-new-token"), &j.NewInstToken).Placeholder(T("API-Token / PAT")).Password().Grow(1)
 				})
 				ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.TextInput(c.Key(key+"-new-jql"), &j.NewInstJQL).Placeholder(defaultJiraJQL).Grow(1)
-					if ui.PrimaryButton(c.Key(key+"-new-add"), "Hinzufügen").
+					if ui.PrimaryButton(c.Key(key+"-new-add"), T("Hinzufügen")).
 						Disabled(strings.TrimSpace(j.NewInstURL) == "" || strings.TrimSpace(j.NewInstToken) == "").Clicked() {
 						name := strings.TrimSpace(j.NewInstName)
 						baseURL := strings.TrimRight(strings.TrimSpace(j.NewInstURL), "/")
@@ -1114,7 +1114,7 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 						j.mu.Unlock()
 						_ = j.Save()
 						j.NewInstName, j.NewInstURL, j.NewInstEmail, j.NewInstToken, j.NewInstJQL = "", "", "", "", ""
-						a.jiraInstancesChanged("Jira-Instanz '" + name + "' hinzugefügt")
+						a.jiraInstancesChanged(T("Jira-Instanz '") + name + T("' hinzugefügt"))
 					}
 				})
 			})
@@ -1170,13 +1170,13 @@ func (j *JiraModuleState) credentialVars() []jiraCredVar {
 		if used[prefix]++; used[prefix] > 1 {
 			prefix = fmt.Sprintf("%s_%d", prefix, used[prefix])
 		}
-		label := fmt.Sprintf("Jira-Instanz „%s“ (%s)", inst.Name, host)
-		out = append(out, jiraCredVar{prefix + "_URL", strings.TrimRight(inst.BaseURL, "/"), label + ": Basis-URL für /rest/api/3/…"})
+		label := fmt.Sprintf(T("Jira-Instanz „%s“ (%s)"), inst.Name, host)
+		out = append(out, jiraCredVar{prefix + "_URL", strings.TrimRight(inst.BaseURL, "/"), label + T(": Basis-URL für /rest/api/3/…")})
 		if inst.Email != "" {
-			out = append(out, jiraCredVar{prefix + "_EMAIL", inst.Email, label + ": E-Mail für Basic Auth"})
+			out = append(out, jiraCredVar{prefix + "_EMAIL", inst.Email, label + T(": E-Mail für Basic Auth")})
 		}
 		if inst.APIToken != "" {
-			out = append(out, jiraCredVar{prefix + "_API_TOKEN", inst.APIToken, label + ": Atlassian-API-Token für Basic Auth (E-Mail:Token)"})
+			out = append(out, jiraCredVar{prefix + "_API_TOKEN", inst.APIToken, label + T(": Atlassian-API-Token für Basic Auth (E-Mail:Token)")})
 		}
 	}
 	return out

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+
+	"fmt"
+	"github.com/egoist/mygo"
 	"image"
 	"image/png"
 	"net/http"
@@ -181,16 +184,34 @@ func TestVaultZeroLeak(t *testing.T) {
 }
 
 // TestGenerateScreenshots renders every view. The PNGs go to a temp dir unless
-// OMAMAC_SCREENSHOTS=1 is set, which refreshes docs/omamac-screenshots, or
-// OMAMAC_SCREENSHOT_DIR names another directory:
+// OMAMAC_SCREENSHOTS is set: "1" (or "en") refreshes the English ones in
+// docs/omamac-screenshots, "de" the German ones in docs/omamac-screenshots/de.
+// OMAMAC_SCREENSHOT_DIR names another directory.
 //
 //	OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots
 func TestGenerateScreenshots(t *testing.T) {
 	outDir := t.TempDir()
+	lang := os.Getenv("OMAMAC_SCREENSHOTS")
+	if lang != "" && lang != "de" {
+		lang = "en"
+	}
 	if dir := os.Getenv("OMAMAC_SCREENSHOT_DIR"); dir != "" {
 		outDir = dir
-	} else if os.Getenv("OMAMAC_SCREENSHOTS") != "" {
+	} else if lang == "en" {
 		outDir = filepath.Join("..", "..", "docs", "omamac-screenshots")
+	} else if lang == "de" {
+		outDir = filepath.Join("..", "..", "docs", "omamac-screenshots", "de")
+	}
+	if raw, err := os.ReadFile(filepath.Join("..", "..", "mygo.json")); err == nil {
+		var meta struct{ Version string }
+		if json.Unmarshal(raw, &meta) == nil && meta.Version != "" {
+			mygo.App.SetVersion(meta.Version) // the header shows it
+			t.Cleanup(func() { mygo.App.SetVersion("") })
+		}
+	}
+	if lang == "en" {
+		SetLanguage("en")
+		t.Cleanup(func() { SetLanguage("de") })
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
@@ -246,13 +267,13 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.createImages = nil
 
 	// The "KI arbeitet" dialog while the AI streams its answer
-	app.aiRun = &aiRun{title: "Neues Panel: mydealz 3D-Drucker-Deals", started: time.Now().Add(-14 * time.Second), cancel: func() {}}
+	app.aiRun = &aiRun{title: T("Neues Panel: ") + T("mydealz 3D-Drucker"), started: time.Now().Add(-14 * time.Second), cancel: func() {}}
 	app.aiRun.steps = []aiStep{
-		{0, "Bild icon.png vorbereitet (31 KB)"},
-		{0, "Anfrage an Claude (claude-sonnet-5-5-medium via claude CLI) gesendet (2840 Zeichen, 1 Bild(er))"},
+		{0, fmt.Sprintf(T("Bild %s vorbereitet (%d KB)"), "icon.png", 31)},
+		{0, fmt.Sprintf(T("Anfrage an %s gesendet (%d Zeichen, %d Bild(er))"), "Claude (claude-sonnet-5-5-medium via claude CLI)", 2840, 1)},
 	}
 	app.aiRun.output.WriteString(`{"id":"forge-app-audit-log","title":"Forge App Audit-Log","subtitle":"example.atlassian.net · Fehleranzahl","kind":"widget","icon":"🛡️","badge_text":"Audit: 0 Fehler","status":"ok","type":"native","refresh_seconds":120,"command":"python3 - <<'PY'\nimport os,json,base64,urllib.request\nU=os.environ.get('ATLASSIAN_BASE_URL','https://example.atlassian.net').rstrip('/')\ndef out(d):\n print(json.dumps(d));raise SystemExit(0)\nif not os.environ.get('ATLASSIAN_API_TOKEN'):out({'badge_text':'Audit: Creds fehlen','status':'error'})\ntry:\n d=json.load(urllib.request.urlopen(U+'/rest/api/3/auditing/record?limit=200',timeout=15))\nexcept Exception as x:out({'badge_text':'Audit ⚠ API','status':'error','rows':[{'left':str(x)[:70]}]})\nR=d if isinstance(d,list) else`)
-	app.busy, app.busyLabel, app.showAIRun = true, "KI erstellt das Panel …", true
+	app.busy, app.busyLabel, app.showAIRun = true, T("KI erstellt das Panel …"), true
 	savePNG("07-ki-ausgabe.png", app.RenderStudioView, 1320, 900)
 
 	app.Config.AIRunView = AIRunViewProgress
@@ -262,9 +283,9 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.Config.AIRunView = AIRunViewLog
 	app.busy = false
 	app.aiRun.steps = append(app.aiRun.steps,
-		aiStep{6 * time.Second, "Antwort erhalten nach 6 s (2125 Zeichen)"},
-		aiStep{6 * time.Second, "Führe den Befehl von „3D-Drucker-Deals“ zum ersten Mal aus …"},
-		aiStep{7 * time.Second, "Prüfe „3D-Drucker-Deals“ …"})
+		aiStep{6 * time.Second, fmt.Sprintf(T("Antwort erhalten nach %d s (%d Zeichen)"), 6, 2125)},
+		aiStep{6 * time.Second, fmt.Sprintf(T("Führe den Befehl von „%s“ zum ersten Mal aus …"), "3D-Drucker-Deals")},
+		aiStep{7 * time.Second, fmt.Sprintf(T("Prüfe „%s“ …"), "3D-Drucker-Deals")})
 	done := &PanelSpec{Icon: "🖨", Title: "3D-Drucker-Deals", Subtitle: "mydealz · Idealo-Zielpreis 499 €", Type: PanelTypeNative,
 		RefreshSeconds: 300, BadgeText: "4 Deals", Status: "ok",
 		Command:        "python3 - <<'PY'\nimport json, os, urllib.request\nurl = 'https://www.mydealz.de/gruppe/3d-drucker'\n…\nprint(json.dumps(out))\nPY",
@@ -273,7 +294,7 @@ func TestGenerateScreenshots(t *testing.T) {
 		Actions: []PanelAction{{Label: "mydealz öffnen", URL: "https://www.mydealz.de/gruppe/3d-drucker"}}}
 	app.aiRun.finish(nil)
 	app.aiRun.ended = app.aiRun.started.Add(7 * time.Second)
-	app.aiRun.setResult("erstellt", []*PanelSpec{done}, nil)
+	app.aiRun.setResult(T("erstellt"), []*PanelSpec{done}, nil)
 	savePNG("09-ki-ergebnis.png", app.RenderStudioView, 1320, 900)
 
 	// The answer itself, parsed into tables

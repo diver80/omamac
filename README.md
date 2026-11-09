@@ -19,6 +19,8 @@ The app's interface is in German.
   Two more work on the same Jira instances: **Jira Activity**, the activity stream of all sites like the Data Center gadget (your tickets or everything, optionally per project), and **Jira Week**, a Kanban board with a column per day that pages week by week, by last change, resolution or due date. Built-in modules keep their settings in the panel (which instances, JQL or projects per instance) and can be duplicated, e.g. one week board per customer; the Jira instances themselves are managed under Settings.
 - **Automatic updates** from the GitHub releases; `omamac -check <panel.json>` checks a panel and renders a PNG preview.
 
+The UI is available in English and German (Settings → General → Language; by default it follows macOS).
+
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
 ![Launcher](docs/omamac-screenshots/05-schnellstart.png)
