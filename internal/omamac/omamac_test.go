@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -271,6 +272,35 @@ func TestClaudeCLIFailureIsAnError(t *testing.T) {
 	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
 	if err == nil || !strings.Contains(err.Error(), "Usage Limit Reached") {
 		t.Fatalf("err = %v; want an error that names the CLI output", err)
+	}
+}
+
+// A hanging CLI must end in a readable timeout, not "signal: killed" plus unrelated stderr.
+func TestCLITimeoutIsNamed(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'Warning: sign-in ends soon' >&2\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orig := cliTimeout
+	cliTimeout = 200 * time.Millisecond
+	defer func() { cliTimeout = orig }()
+	cfg := offlineGeminiConfig(t)
+	cfg.ClaudeCLIPath = bin
+	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
+	if err == nil || !strings.Contains(err.Error(), "Zeitüberschreitung") || strings.Contains(err.Error(), "Warning") {
+		t.Fatalf("err = %v; want a plain timeout error", err)
+	}
+}
+
+func TestClaudeCLIArgs(t *testing.T) {
+	got := strings.Join(claudeCLIArgs("claude-sonnet-5-5-medium", "PROMPT"), " ")
+	for _, want := range []string{"--tools  ", "--strict-mcp-config", "--model sonnet", "--effort medium", "-p PROMPT"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("args %q lack %q", got, want)
+		}
+	}
+	if !strings.HasSuffix(got, "-p PROMPT") {
+		t.Fatalf("prompt must be the value of -p: %q", got)
 	}
 }
 

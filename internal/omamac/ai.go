@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -139,18 +140,31 @@ func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) 
 	if bin == "" {
 		bin = "agy"
 	}
-	runCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	return runCLI(ctx, "agy CLI", bin, antigravityArgs(model, prompt))
+}
+
+// cliTimeout bounds one CLI call; generating a multi-panel JSON answer can take a while.
+var cliTimeout = 120 * time.Second
+
+// runCLI runs an AI CLI in a neutral directory (so no project CLAUDE.md or
+// settings get picked up) and returns its trimmed stdout.
+func runCLI(ctx context.Context, label, bin string, args []string) (string, error) {
+	runCtx, cancel := context.WithTimeout(ctx, cliTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, bin, antigravityArgs(model, prompt)...)
+	cmd := exec.CommandContext(runCtx, bin, args...)
+	cmd.Dir = os.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	out := strings.TrimSpace(stdout.String())
 	if err != nil {
+		if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			return "", fmt.Errorf("%s: keine Antwort nach %d s (Zeitüberschreitung)", label, int(cliTimeout.Seconds()))
+		}
 		// CLIs print quota/login errors ("Usage Limit Reached") to stdout and exit non-zero.
-		return "", fmt.Errorf("agy CLI: %v: %s", err, cliErrorDetail(out, stderr.String()))
+		return "", fmt.Errorf("%s: %v: %s", label, err, cliErrorDetail(out, stderr.String()))
 	}
 	return out, nil
 }
@@ -179,19 +193,29 @@ func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, err
 	if bin == "" {
 		bin = "claude"
 	}
-	runCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
+	return runCLI(ctx, "claude CLI", bin, claudeCLIArgs(e.Config.ClaudeModel, prompt))
+}
 
-	cmd := exec.CommandContext(runCtx, bin, "-p", prompt)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	out := strings.TrimSpace(stdout.String())
-	if err != nil {
-		return "", fmt.Errorf("claude CLI: %v: %s", err, cliErrorDetail(out, stderr.String()))
+// claudeCLIArgs builds a plain text-in/text-out claude call: no tools, MCP servers,
+// skills or saved session — the full agent setup made one call take longer than the timeout.
+// The configured model uses Antigravity names ("claude-sonnet-5-5-medium"), so it is
+// mapped to the CLI's family alias plus effort level.
+func claudeCLIArgs(model, prompt string) []string {
+	args := []string{"--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"}
+	m := strings.ToLower(model)
+	for _, fam := range []string{"fable", "opus", "sonnet", "haiku"} {
+		if strings.Contains(m, fam) {
+			args = append(args, "--model", fam)
+			break
+		}
 	}
-	return out, nil
+	for _, eff := range []string{"low", "medium", "high"} {
+		if strings.HasSuffix(m, "-"+eff) {
+			args = append(args, "--effort", eff)
+			break
+		}
+	}
+	return append(args, "-p", prompt)
 }
 
 // cliErrorDetail returns the most useful part of a failed CLI's output for the error message.

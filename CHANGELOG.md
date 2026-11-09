@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2
+
+- **KI über die claude CLI funktioniert wieder:** Die CLI startete mit allen Werkzeugen, MCP-Servern und Plugins und wurde nach 45 s abgebrochen („signal: killed“). OmaMac ruft sie jetzt als reines Text-Modell auf (ohne Werkzeuge und MCP-Server, mit dem eingestellten Modell); ein Panel entsteht in etwa 20 s.
+- Zeitlimit für KI-CLIs auf 120 s erhöht; eine Zeitüberschreitung wird als solche gemeldet statt als „signal: killed“ mit fremder Warnung.
+
 ## 1.3.1
 
 - **KI über Antigravity-Login funktioniert wieder:** Mit agy 1.5 schlug „Neues Panel“ und „Mit KI anpassen“ fehl („-p took --disable-slash-commands as its prompt“). Der Prompt wird jetzt korrekt übergeben.
