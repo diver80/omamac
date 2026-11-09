@@ -107,9 +107,12 @@ type App struct {
 	refineImages []string // images attached in the refine box
 	thumbs       map[string]ui.ImageSource
 
-	aiRun     *aiRun // the current or last AI run, shown in the "KI arbeitet" dialog
-	showAIRun bool
-	aiRunSeen int // output length the dialog last scrolled to
+	aiRun         *aiRun // the current or last AI run, shown in the "KI arbeitet" dialog
+	showAIRun     bool
+	aiRunSeen     int  // output length the dialog last scrolled to
+	aiRunShowRaw  bool // the raw answer below the result is unfolded
+	aiRunExpanded bool // the compact progress view was switched to the log
+	aiRunViewIdx  int  // settings: 0 = Protokoll, 1 = Nur Fortschritt
 
 	quitting  bool // set when the app quits: windows closing then must not unpin widgets or hide
 	busy      bool
@@ -205,6 +208,10 @@ func (a *App) loadSettingsDraft() {
 		a.claudeAuthIdx = 0
 	}
 	a.claudeModel = c.ClaudeModel
+	a.aiRunViewIdx = 0
+	if c.AIRunView == AIRunViewProgress {
+		a.aiRunViewIdx = 1
+	}
 	a.claudeKey = c.ClaudeAPIKey
 	a.shortcutText = c.LauncherShortcut
 }
@@ -755,14 +762,15 @@ func (a *App) triggerPrompt1Create() {
 		if err == nil && len(created) == 0 {
 			err = errors.New("die KI hat kein Panel geliefert")
 		}
-		for _, p := range created {
+		checks := make([]error, len(created))
+		for i, p := range created {
 			p.Kind = "panel"
 			if asWidget {
 				p.Kind = "widget"
 				p.PinnedFloating = true
 			}
 			progressStep(ctx, "Prüfe „%s“ …", p.Title)
-			_, _ = p.CheckPanelSpec(ctx, vaultEnv...)
+			_, checks[i] = p.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
 			a.busy = false
@@ -776,7 +784,7 @@ func (a *App) triggerPrompt1Create() {
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
-			a.showAIRun = false
+			run.setResult("erstellt", created, checks)
 			a.createImages = nil
 			for _, p := range created {
 				_ = SavePanel(a.Config.PanelsDir, p)
@@ -787,9 +795,11 @@ func (a *App) triggerPrompt1Create() {
 			}
 			a.syncAllPanelRuntimes()
 			a.clearStatus()
-			if len(created) == 1 {
+			switch {
+			case a.showAIRun: // the open dialog shows the result
+			case len(created) == 1:
 				a.toast(fmt.Sprintf("„%s“ erstellt (%s)", created[0].Title, providerUsed))
-			} else {
+			default:
 				a.toast(fmt.Sprintf("%d Panels erstellt (%s)", len(created), providerUsed))
 			}
 		})
@@ -822,9 +832,10 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 		if err == nil && updated == nil {
 			err = errors.New("die KI hat kein Panel geliefert")
 		}
+		var checkErr error
 		if updated != nil {
 			progressStep(ctx, "Prüfe „%s“ …", updated.Title)
-			_, _ = updated.CheckPanelSpec(ctx, vaultEnv...)
+			_, checkErr = updated.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
 			a.busy = false
@@ -838,7 +849,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
-			a.showAIRun = false
+			run.setResult("angepasst", []*PanelSpec{updated}, []error{checkErr})
 			replaced := false
 			for i, p := range a.panels {
 				if p.ID == panelID {
@@ -860,7 +871,9 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			a.prompt2Text = ""
 			a.refineImages = nil
 			a.clearStatus()
-			a.toast(fmt.Sprintf("„%s“ angepasst (%s)", updated.Title, providerUsed))
+			if !a.showAIRun {
+				a.toast(fmt.Sprintf("„%s“ angepasst (%s)", updated.Title, providerUsed))
+			}
 		})
 	}()
 }

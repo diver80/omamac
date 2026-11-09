@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+
+- **KI-Fenster bleibt bis „OK“ offen:** Nach dem Erstellen oder Anpassen zeigt es das Ergebnis aufbereitet – Titel, Darstellung, Aktualisierungsintervall, den Befehl als lesbaren Code, den ersten Datenabruf und die Aktionen. Die rohe Antwort der KI liegt eingeklappt darunter, als eingerücktes JSON. Nur „Im Hintergrund“ blendet das Fenster vorher aus.
+- **Neue Einstellung „Während die KI arbeitet“:** „Protokoll“ (Schritte mit Zeit und die Antwort live) oder „Nur Fortschritt“ (Fortschrittsbalken und aktueller Schritt; das Protokoll ist einen Klick entfernt).
+
 ## 1.4.0
 
 - **Live-Ausgabe der KI:** Beim Erstellen und Anpassen öffnet sich ein Fenster mit den Arbeitsschritten und der Antwort der KI, während sie geschrieben wird (Claude CLI live, andere Anbieter am Ende). „Im Hintergrund“ blendet es aus, „Abbrechen“ stoppt die KI. Schlägt etwas fehl, bleibt das Fenster mit der vollständigen Ausgabe offen; „KI-Ausgabe“ in der Fehlerzeile öffnet es wieder.

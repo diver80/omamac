@@ -1,8 +1,11 @@
 package omamac
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,21 +29,69 @@ type aiRun struct {
 	title    string
 	started  time.Time
 	ended    time.Time
-	steps    []string
+	steps    []aiStep
 	output   strings.Builder
 	errText  string
 	canceled bool
 	done     bool
+	result   *aiRunResult
 	cancel   context.CancelFunc
 
 	pending atomic.Bool // a repaint is scheduled
 }
 
+type aiStep struct {
+	at   time.Duration // since the run started
+	text string
+}
+
+// aiRunResult is what a successful run produced, prepared for display.
+type aiRunResult struct {
+	verb   string // "erstellt" or "angepasst"
+	panels []aiResultPanel
+}
+
+type aiResultPanel struct {
+	icon, title, subtitle, kind string
+	refresh                     int
+	command                     string
+	actions                     [][2]string // label, command or URL
+	metrics, rows, htmlBytes    int
+	badge, status               string
+	firstOutput                 string // what the command printed on its first run
+	checkErr                    string
+}
+
+func summarizePanel(p *PanelSpec, checkErr error) aiResultPanel {
+	r := aiResultPanel{
+		icon: p.Icon, title: p.Title, subtitle: p.Subtitle, kind: "Native",
+		refresh: p.RefreshSeconds, command: strings.TrimSpace(p.Command),
+		metrics: len(p.Metrics), rows: len(p.Rows), htmlBytes: len(p.HTML),
+		badge: p.BadgeText, status: p.Status,
+		firstOutput: truncateStr(strings.TrimSpace(p.LastCommandOut), 600),
+	}
+	if p.Type == PanelTypeHTML {
+		r.kind = "HTML"
+	}
+	for _, a := range p.Actions {
+		target := a.Command
+		if target == "" {
+			target = a.URL
+		}
+		r.actions = append(r.actions, [2]string{a.Label, target})
+	}
+	if checkErr != nil {
+		r.checkErr = checkErr.Error()
+	}
+	return r
+}
+
 type aiRunView struct {
 	title, output, errText string
-	steps                  []string
+	steps                  []aiStep
 	elapsed                time.Duration
 	done, canceled         bool
+	result                 *aiRunResult
 }
 
 func (r *aiRun) snapshot() aiRunView {
@@ -52,9 +103,40 @@ func (r *aiRun) snapshot() aiRunView {
 	}
 	return aiRunView{
 		title: r.title, output: r.output.String(), errText: r.errText,
-		steps: append([]string(nil), r.steps...), elapsed: end.Sub(r.started),
-		done: r.done, canceled: r.canceled,
+		steps: append([]aiStep(nil), r.steps...), elapsed: end.Sub(r.started),
+		done: r.done, canceled: r.canceled, result: r.result,
 	}
+}
+
+// progress estimates how far the run is, 0..1, from its steps, the streamed
+// output and the time: the AI's answer length is unknown up front.
+func (v aiRunView) progress() float64 {
+	if v.done {
+		return 1
+	}
+	p := 0.04
+	sent, answered, checking := false, false, false
+	for _, s := range v.steps {
+		switch {
+		case strings.HasPrefix(s.text, "Anfrage an"):
+			sent = true
+		case strings.HasPrefix(s.text, "Antwort erhalten"):
+			answered = true
+		case strings.HasPrefix(s.text, "Führe"), strings.HasPrefix(s.text, "Prüfe"):
+			checking = true
+		}
+	}
+	switch {
+	case checking:
+		p = 0.92
+	case answered:
+		p = 0.85
+	case sent && v.output != "":
+		p = 0.15 + 0.68*(1-math.Exp(-float64(len(v.output))/2500))
+	case sent:
+		p = 0.1 + 0.6*(1-math.Exp(-v.elapsed.Seconds()/40))
+	}
+	return p
 }
 
 // startAIRun opens the dialog for a new run and returns the context the AI
@@ -65,7 +147,7 @@ func (a *App) startAIRun(title string) (context.Context, *aiRun) {
 	ctx = WithAIProgress(ctx, &AIProgress{
 		Step: func(s string) {
 			r.mu.Lock()
-			r.steps = append(r.steps, s)
+			r.steps = append(r.steps, aiStep{at: time.Since(r.started), text: s})
 			r.mu.Unlock()
 			a.repaintAIRun(r)
 		},
@@ -83,6 +165,8 @@ func (a *App) startAIRun(title string) (context.Context, *aiRun) {
 	})
 	a.aiRun = r
 	a.aiRunSeen = 0
+	a.aiRunShowRaw = false
+	a.aiRunExpanded = false
 	a.showAIRun = true
 	// the elapsed time ticks while the AI is silent
 	go func() {
@@ -113,7 +197,7 @@ func (a *App) repaintAIRun(r *aiRun) {
 	}()
 }
 
-// finish ends the run; on the UI thread. A failed run keeps its dialog open with the output.
+// finish ends the run; on the UI thread. The dialog stays open until OK.
 func (r *aiRun) finish(err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -129,6 +213,21 @@ func (r *aiRun) finish(err error) {
 	}
 }
 
+// setResult records what a successful run produced; checks[i] is panels[i]'s check error.
+func (r *aiRun) setResult(verb string, panels []*PanelSpec, checks []error) {
+	res := &aiRunResult{verb: verb}
+	for i, p := range panels {
+		var err error
+		if i < len(checks) {
+			err = checks[i]
+		}
+		res.panels = append(res.panels, summarizePanel(p, err))
+	}
+	r.mu.Lock()
+	r.result = res
+	r.mu.Unlock()
+}
+
 func (r *aiRun) requestCancel() {
 	r.mu.Lock()
 	r.canceled = true
@@ -136,7 +235,24 @@ func (r *aiRun) requestCancel() {
 	r.cancel()
 }
 
-// renderAIRunDialog shows what the AI is doing: steps, its streamed output and the outcome.
+// prettyAIOutput indents the JSON in an AI answer (inside ``` fences or plain) for reading.
+func prettyAIOutput(raw string) string {
+	s := strings.TrimSpace(raw)
+	i := strings.IndexAny(s, "[{")
+	j := strings.LastIndexAny(s, "]}")
+	if i < 0 || j <= i {
+		return raw
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(s[i:j+1]), "", "  "); err != nil {
+		return raw
+	}
+	return buf.String()
+}
+
+// renderAIRunDialog shows what the AI is doing. "Protokoll" shows its steps
+// and streamed answer, "Nur Fortschritt" a progress bar; both end with the
+// formatted result and stay open until OK.
 func (a *App) renderAIRunDialog(c *ui.Context) {
 	r := a.aiRun
 	if r == nil {
@@ -144,52 +260,45 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 	}
 	v := r.snapshot()
 	t := c.Theme()
+	compact := a.Config.AIRunView == AIRunViewProgress && !a.aiRunExpanded
 	ui.Modal(c.Key("ai-run"), &a.showAIRun, func() {
-		ui.Column(c).Width(680).Gap(10).Children(func() {
-			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				switch {
-				case !v.done:
-					ui.Spinner(c).Size(16, 16)
-				case v.errText != "":
-					ui.Text(c, "⚠️").FontSize(15)
-				default:
-					ui.Text(c, "✓").FontSize(15).Bold().TextColor(t.Success)
-				}
-				ui.Text(c, v.title).FontSize(16).Bold().Grow(1).MinWidth(0).SingleLine()
-				ui.Text(c, fmt.Sprintf("%d s", int(v.elapsed.Seconds()))).FontSize(12).TextColor(t.TextMuted)
-			})
+		ui.Column(c).Width(720).Gap(12).Children(func() {
+			a.renderAIRunHeader(c, v)
 
-			ui.Column(c).FillWidth().Gap(3).Children(func() {
-				for i, s := range v.steps {
-					ui.Text(c.Key(fmt.Sprintf("ai-step-%d", i)), "• "+s).FontSize(11.5).TextColor(t.TextMuted).FillWidth()
-				}
-			})
-
-			box := ui.Scroll(c.Key("ai-run-out")).FillWidth().Height(300).Radius(8).Border(1, t.Border).Background(t.Background)
-			box.Children(func() {
-				ui.Column(c).FillWidth().Padding(10, 12).Children(func() {
-					switch {
-					case v.output != "":
-						ui.Text(c, v.output).Font("monospace").FontSize(11).FillWidth().Selectable()
-					case !v.done:
-						ui.Text(c, "Warte auf die erste Ausgabe der KI …").FontSize(11.5).TextColor(t.TextMuted)
-					default:
-						ui.Text(c, "Keine Ausgabe.").FontSize(11.5).TextColor(t.TextMuted)
+			body := ui.Scroll(c.Key("ai-run-body")).FillWidth().MaxHeight(540)
+			body.Children(func() {
+				ui.Column(c).FillWidth().Gap(12).Children(func() {
+					if compact {
+						a.renderAIRunProgress(c, v)
+					} else {
+						a.renderAIRunSteps(c, v)
+					}
+					if v.errText != "" {
+						ui.Row(c).FillWidth().Padding(10, 12).Radius(8).Background(t.Danger.Alpha(0.10)).Children(func() {
+							ui.Text(c, v.errText).FontSize(12).TextColor(t.Danger).FillWidth().Selectable()
+						})
+					}
+					if v.result != nil {
+						for i, p := range v.result.panels {
+							a.renderAIResultPanel(c, fmt.Sprintf("ai-res-%d", i), p)
+						}
+					}
+					if !compact {
+						a.renderAIRunOutput(c, v)
 					}
 					end := ui.Column(c.Key("ai-run-end")).Height(1).FillWidth()
-					if len(v.output) != a.aiRunSeen {
+					if !v.done && len(v.output) != a.aiRunSeen {
 						a.aiRunSeen = len(v.output)
-						end.ScrollIntoView() // follow the output as it grows
+						end.ScrollIntoView() // follow the answer as it streams in
 					}
 				})
 			})
 
-			if v.errText != "" {
-				ui.Text(c, v.errText).FontSize(12).TextColor(t.Danger).FillWidth()
-			}
-
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				if v.output != "" && ui.Button(c.Key("ai-run-copy"), "Ausgabe kopieren").Clicked() {
+				if compact && textButton(c, "ai-run-expand", "Protokoll anzeigen") {
+					a.aiRunExpanded = true
+				}
+				if !compact && v.output != "" && ui.Button(c.Key("ai-run-copy"), "Ausgabe kopieren").Clicked() {
 					c.WriteClipboard(v.output)
 					a.toast("Ausgabe kopiert")
 				}
@@ -201,12 +310,174 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 					if ui.Button(c.Key("ai-run-cancel"), "Abbrechen").Clicked() {
 						r.requestCancel()
 					}
-				} else if ui.PrimaryButton(c.Key("ai-run-close"), "Schließen").Clicked() {
+				} else if ok := ui.PrimaryButton(c.Key("ai-run-ok"), "OK"); ok.Clicked() || ok.Shortcut(0, ui.KeyEnter) {
 					a.showAIRun = false
 				}
 			})
 		})
 	})
+}
+
+func (a *App) renderAIRunHeader(c *ui.Context, v aiRunView) {
+	t := c.Theme()
+	title := v.title
+	if v.done && v.errText == "" && v.result != nil {
+		n := len(v.result.panels)
+		if n == 1 {
+			title = fmt.Sprintf("„%s“ %s", v.result.panels[0].title, v.result.verb)
+		} else {
+			title = fmt.Sprintf("%d Panels %s", n, v.result.verb)
+		}
+	}
+	ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+		switch {
+		case !v.done:
+			ui.Spinner(c).Size(18, 18)
+		case v.errText != "":
+			ui.Text(c, "⚠️").FontSize(17)
+		default:
+			ui.Text(c, "✓").FontSize(18).Bold().TextColor(t.Success)
+		}
+		ui.Text(c, title).FontSize(16).Bold().Grow(1).MinWidth(0).SingleLine()
+		ui.Text(c, formatSeconds(v.elapsed)).FontSize(12).TextColor(t.TextMuted)
+	})
+}
+
+// renderAIRunProgress is the compact view: a bar and the current step.
+func (a *App) renderAIRunProgress(c *ui.Context, v aiRunView) {
+	t := c.Theme()
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
+		ui.Progress(c, v.progress()).FillWidth()
+		current := "Starte …"
+		if n := len(v.steps); n > 0 {
+			current = v.steps[n-1].text
+		}
+		if v.done {
+			current = "Fertig."
+			if v.errText != "" {
+				current = "Fehlgeschlagen."
+			}
+		}
+		ui.Text(c, current).FontSize(12).TextColor(t.TextMuted).FillWidth().SingleLine()
+	})
+}
+
+// renderAIRunSteps lists the steps with their time; the last one spins while the run lasts.
+func (a *App) renderAIRunSteps(c *ui.Context, v aiRunView) {
+	t := c.Theme()
+	ui.Column(c).FillWidth().Gap(5).Children(func() {
+		for i, s := range v.steps {
+			last := i == len(v.steps)-1
+			ui.Row(c.Key(fmt.Sprintf("ai-step-%d", i))).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Width(16).Justify(ui.Center).Children(func() {
+					if last && !v.done {
+						ui.Spinner(c).Size(12, 12)
+					} else {
+						ui.Text(c, "✓").FontSize(11.5).Bold().TextColor(t.Success)
+					}
+				})
+				ui.Text(c, s.text).FontSize(12).Grow(1).MinWidth(0)
+				ui.Text(c, "+"+formatSeconds(s.at)).FontSize(11).TextColor(t.TextMuted).Font("monospace")
+			})
+		}
+	})
+}
+
+// renderAIRunOutput shows the AI's answer: live while it streams, then
+// indented and folded away below the formatted result.
+func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
+	t := c.Theme()
+	code := func(text string) {
+		ui.Column(c).FillWidth().Padding(10, 12).Radius(8).Border(1, t.Border).Background(t.Background).Children(func() {
+			ui.Text(c, text).Font("monospace").FontSize(11).FillWidth().Selectable()
+		})
+	}
+	switch {
+	case !v.done && v.output == "":
+		ui.Text(c, "Warte auf die erste Ausgabe der KI …").FontSize(12).TextColor(t.TextMuted)
+	case !v.done:
+		ui.Text(c, "Antwort der KI (live)").FontSize(11.5).Bold().TextColor(t.TextMuted)
+		code(v.output)
+	case v.output == "":
+	case v.result != nil:
+		ui.Collapsible(c, "Rohe Antwort der KI", &a.aiRunShowRaw, func() { code(prettyAIOutput(v.output)) })
+	default:
+		ui.Text(c, "Antwort der KI").FontSize(11.5).Bold().TextColor(t.TextMuted)
+		code(prettyAIOutput(v.output))
+	}
+}
+
+// renderAIResultPanel shows one created or changed panel: what it shows, its command and its first run.
+func (a *App) renderAIResultPanel(c *ui.Context, key string, p aiResultPanel) {
+	t := c.Theme()
+	label := func(s string) { ui.Text(c, s).FontSize(11).Bold().TextColor(t.TextMuted) }
+	code := func(text string) {
+		ui.Column(c).FillWidth().Padding(8, 10).Radius(6).Background(t.Background).Children(func() {
+			ui.Text(c, text).Font("monospace").FontSize(11).FillWidth().Selectable()
+		})
+	}
+	ui.Column(c.Key(key)).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, p.icon).FontSize(18)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, p.title).FontSize(14).Bold().SingleLine()
+				if p.subtitle != "" {
+					ui.Text(c, p.subtitle).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
+				}
+			})
+			pillBadge(c, p.kind, t.Accent.Alpha(0.15), t.Accent)
+		})
+
+		var facts []string
+		if p.refresh > 0 {
+			facts = append(facts, fmt.Sprintf("aktualisiert alle %d s", p.refresh))
+		}
+		if p.kind == "HTML" {
+			facts = append(facts, fmt.Sprintf("HTML %d KB", (p.htmlBytes+1023)/1024))
+		} else {
+			facts = append(facts, fmt.Sprintf("%d Kennzahlen · %d Zeilen", p.metrics, p.rows))
+		}
+		if n := len(p.actions); n > 0 {
+			facts = append(facts, fmt.Sprintf("%d Aktionen", n))
+		}
+		ui.Text(c, strings.Join(facts, " · ")).FontSize(11.5).TextColor(t.TextMuted)
+
+		if p.command != "" {
+			label("BEFEHL")
+			code(p.command)
+			label("ERSTER ABRUF")
+			bg, fg := statusColors(t, p.status)
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				switch {
+				case p.checkErr != "":
+					ui.Text(c, "⚠ "+p.checkErr).FontSize(12).TextColor(t.Danger).Grow(1).MinWidth(0)
+				case p.badge != "":
+					pillBadge(c, p.badge, bg, fg)
+				}
+			})
+			if p.firstOutput != "" {
+				code(prettyAIOutput(p.firstOutput))
+			}
+		}
+		if len(p.actions) > 0 {
+			label("AKTIONEN")
+			for i, act := range p.actions {
+				ui.Row(c.Key(fmt.Sprintf("%s-act-%d", key, i))).FillWidth().Gap(8).Children(func() {
+					ui.Text(c, act[0]).FontSize(12).Width(170).SingleLine()
+					ui.Text(c, act[1]).Font("monospace").FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
+				})
+			}
+		}
+	})
+}
+
+// formatSeconds prints a duration as "7 s" or "1:05 min".
+func formatSeconds(d time.Duration) string {
+	s := int(d.Seconds())
+	if s < 60 {
+		return fmt.Sprintf("%d s", s)
+	}
+	return fmt.Sprintf("%d:%02d min", s/60, s%60)
 }
 
 // ---------------------------------------------------------------------------

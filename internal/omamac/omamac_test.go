@@ -247,10 +247,34 @@ func TestGenerateScreenshots(t *testing.T) {
 
 	// The "KI arbeitet" dialog while the AI streams its answer
 	app.aiRun = &aiRun{title: "Neues Panel: mydealz 3D-Drucker-Deals", started: time.Now().Add(-14 * time.Second), cancel: func() {}}
-	app.aiRun.steps = []string{"Bild icon.png vorbereitet (31 KB)", "Anfrage an Claude (claude-sonnet-5-5-medium via claude CLI) gesendet (2840 Zeichen, 1 Bild(er))"}
+	app.aiRun.steps = []aiStep{
+		{0, "Bild icon.png vorbereitet (31 KB)"},
+		{0, "Anfrage an Claude (claude-sonnet-5-5-medium via claude CLI) gesendet (2840 Zeichen, 1 Bild(er))"},
+	}
 	app.aiRun.output.WriteString("[\n  {\n    \"id\": \"mydealz-3d-drucker\",\n    \"title\": \"3D-Drucker-Deals\",\n    \"subtitle\": \"mydealz · Idealo-Zielpreis $IDEALO_TARGET_PRICE\",\n    \"icon\": \"🖨\",\n    \"type\": \"native\",\n    \"refresh_seconds\": 300,\n    \"command\": \"python3 - <<'PY'\\nimport json, os, urllib.request")
 	app.busy, app.busyLabel, app.showAIRun = true, "KI erstellt das Panel …", true
-	savePNG("07-ki-ausgabe.png", app.RenderStudioView, 1320, 820)
+	savePNG("07-ki-ausgabe.png", app.RenderStudioView, 1320, 900)
+
+	app.Config.AIRunView = AIRunViewProgress
+	savePNG("08-ki-fortschritt.png", app.RenderStudioView, 1320, 820)
+
+	// ... and when it is done: the formatted result stays until OK
+	app.Config.AIRunView = AIRunViewLog
+	app.busy = false
+	app.aiRun.steps = append(app.aiRun.steps,
+		aiStep{6 * time.Second, "Antwort erhalten nach 6 s (2125 Zeichen)"},
+		aiStep{6 * time.Second, "Führe den Befehl von „3D-Drucker-Deals“ zum ersten Mal aus …"},
+		aiStep{7 * time.Second, "Prüfe „3D-Drucker-Deals“ …"})
+	done := &PanelSpec{Icon: "🖨", Title: "3D-Drucker-Deals", Subtitle: "mydealz · Idealo-Zielpreis 499 €", Type: PanelTypeNative,
+		RefreshSeconds: 300, BadgeText: "4 Deals", Status: "ok",
+		Command:        "python3 - <<'PY'\nimport json, os, urllib.request\nurl = 'https://www.mydealz.de/gruppe/3d-drucker'\n…\nprint(json.dumps(out))\nPY",
+		LastCommandOut: `{"badge_text":"4 Deals","status":"ok","rows":[{"left":"Bambu Lab A1","right":"299 €"}]}`,
+		Metrics:        []PanelMetric{{Label: "Deals"}}, Rows: make([]PanelRow, 4),
+		Actions: []PanelAction{{Label: "mydealz öffnen", URL: "https://www.mydealz.de/gruppe/3d-drucker"}}}
+	app.aiRun.finish(nil)
+	app.aiRun.ended = app.aiRun.started.Add(7 * time.Second)
+	app.aiRun.setResult("erstellt", []*PanelSpec{done}, nil)
+	savePNG("09-ki-ergebnis.png", app.RenderStudioView, 1320, 900)
 	app.busy, app.showAIRun, app.aiRun = false, false, nil
 
 	app.activeTab = TabStore
@@ -528,5 +552,33 @@ func TestDeletePanelFlow(t *testing.T) {
 	tt.Key(ui.Cmd, ui.KeyBackspace)
 	if app.confirmDelete {
 		t.Fatalf("⌘⌫ offered to delete a system module")
+	}
+}
+
+// The progress bar only moves forward through the run's phases and ends full.
+func TestAIRunProgress(t *testing.T) {
+	v := aiRunView{}
+	p0 := v.progress()
+	v.steps = []aiStep{{text: "Anfrage an Claude gesendet"}}
+	p1 := v.progress()
+	v.output = strings.Repeat("x", 3000)
+	p2 := v.progress()
+	v.steps = append(v.steps, aiStep{text: "Antwort erhalten nach 6 s"})
+	p3 := v.progress()
+	v.steps = append(v.steps, aiStep{text: "Prüfe „X“ …"})
+	p4 := v.progress()
+	v.done = true
+	if !(p0 < p1 && p1 < p2 && p2 < p3 && p3 < p4 && p4 < 1 && v.progress() == 1) {
+		t.Fatalf("progress not increasing: %v %v %v %v %v", p0, p1, p2, p3, p4)
+	}
+}
+
+func TestPrettyAIOutput(t *testing.T) {
+	got := prettyAIOutput("Hier ist das Panel:\n```json\n[{\"title\":\"A\"}]\n```")
+	if got != "[\n  {\n    \"title\": \"A\"\n  }\n]" {
+		t.Fatalf("got %q", got)
+	}
+	if prettyAIOutput("kein JSON") != "kein JSON" {
+		t.Fatal("plain text must stay as it is")
 	}
 }

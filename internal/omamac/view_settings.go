@@ -86,6 +86,20 @@ func (a *App) renderAISettings(c *ui.Context) {
 					}
 				}
 			})
+			ui.Form(c, func() {
+				ui.Field(c, "Während die KI arbeitet", func() {
+					ui.Column(c).Gap(4).Children(func() {
+						ui.Row(c).Children(func() {
+							changed = ui.Segmented(c.Key("cfg-ai-view"), &a.aiRunViewIdx, "Protokoll", "Nur Fortschritt").Changed() || changed
+						})
+						hint := "Zeigt jeden Schritt und die Antwort der KI, während sie geschrieben wird."
+						if a.aiRunViewIdx == 1 {
+							hint = "Zeigt einen Fortschrittsbalken; das Protokoll ist einen Klick entfernt."
+						}
+						ui.Text(c, hint).FontSize(12).TextColor(t.TextMuted)
+					})
+				})
+			})
 			if changed {
 				a.saveSettingsFromDraft()
 			}
@@ -237,6 +251,10 @@ func (a *App) saveSettingsFromDraft() {
 		c.ClaudeAuthMode = ClaudeAuthAPIKey
 	}
 	c.ClaudeModel = a.claudeModel
+	c.AIRunView = AIRunViewLog
+	if a.aiRunViewIdx == 1 {
+		c.AIRunView = AIRunViewProgress
+	}
 	c.ClaudeAPIKey = strings.TrimSpace(a.claudeKey)
 	c.Normalize()
 

@@ -53,7 +53,15 @@ type Config struct {
 	PanelsDir           string `json:"panels_dir"`
 	DefaultPanelType    string `json:"default_panel_type"` // "native", "html", or "both"
 	OnboardingDismissed bool   `json:"onboarding_dismissed"`
+
+	// AIRunView is what the dialog shows while the AI works: AIRunViewLog or AIRunViewProgress.
+	AIRunView string `json:"ai_run_view,omitempty"`
 }
+
+const (
+	AIRunViewLog      = "log"      // steps and the AI's streamed answer
+	AIRunViewProgress = "progress" // a progress bar; the log one click away
+)
 
 // DefaultConfigDir returns ~/.config/omamac.
 func DefaultConfigDir() string {
@@ -155,6 +163,9 @@ func (c *Config) Normalize() {
 	}
 	if c.ClaudeAuthMode == "" {
 		c.ClaudeAuthMode = def.ClaudeAuthMode
+	}
+	if c.AIRunView != AIRunViewProgress {
+		c.AIRunView = AIRunViewLog
 	}
 	if c.ClaudeModel == "" {
 		c.ClaudeModel = def.ClaudeModel
