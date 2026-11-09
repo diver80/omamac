@@ -292,6 +292,27 @@ func TestCLITimeoutIsNamed(t *testing.T) {
 	}
 }
 
+// A "claude setup-token" token in the API-key field is not an API key: it must
+// go to the claude CLI as CLAUDE_CODE_OAUTH_TOKEN, never to the API as x-api-key.
+func TestSetupTokenRunsClaudeCLI(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho \"token=$CLAUDE_CODE_OAUTH_TOKEN\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := offlineGeminiConfig(t)
+	cfg.ActiveProvider = ProviderClaude
+	cfg.ClaudeAuthMode = ClaudeAuthAPIKey
+	cfg.ClaudeAPIKey = "sk-ant-oat01-test"
+	cfg.ClaudeCLIPath = bin
+	out, label, err := NewAIEngine(cfg).Complete(context.Background(), "hi")
+	if err != nil || out != "token=sk-ant-oat01-test" || !strings.Contains(label, "setup-token") {
+		t.Fatalf("out=%q label=%q err=%v", out, label, err)
+	}
+	if got := anthropicModelID("claude-sonnet-5-5-medium"); got != "claude-sonnet-5-5" {
+		t.Fatalf("model id = %q", got)
+	}
+}
+
 func TestClaudeCLIArgs(t *testing.T) {
 	got := strings.Join(claudeCLIArgs("claude-sonnet-5-5-medium", "PROMPT"), " ")
 	for _, want := range []string{"--tools  ", "--strict-mcp-config", "--model sonnet", "--effort medium", "-p PROMPT"} {

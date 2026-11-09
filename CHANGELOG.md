@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+
+- **Token aus „claude setup-token“ wird unterstützt:** Ein `sk-ant-oat…`-Token ist kein API-Key – die Anthropic-API lehnt ihn ab. OmaMac erkennt ihn jetzt im Feld „API-Key“ (oder im neuen Feld „Token“ beim Modus „Claude CLI“) und nutzt ihn über die claude CLI als `CLAUDE_CODE_OAUTH_TOKEN`. Damit läuft die KI auch nach Ablauf des normalen claude-Logins weiter.
+- Mit echtem Anthropic-API-Key wird jetzt das eingestellte Modell verwendet statt eines veralteten Ersatzmodells.
+
 ## 1.3.2
 
 - **KI über die claude CLI funktioniert wieder:** Die CLI startete mit allen Werkzeugen, MCP-Servern und Plugins und wurde nach 45 s abgebrochen („signal: killed“). OmaMac ruft sie jetzt als reines Text-Modell auf (ohne Werkzeuge und MCP-Server, mit dem eingestellten Modell); ein Panel entsteht in etwa 20 s.

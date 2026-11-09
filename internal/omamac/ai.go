@@ -42,6 +42,9 @@ func (e *AIEngine) ActiveProviderSummary() string {
 		case ClaudeAuthCLI:
 			return fmt.Sprintf("Claude (%s via claude CLI)", cfg.ClaudeModel)
 		default:
+			if isClaudeOAuthToken(cfg.ClaudeAPIKey) {
+				return fmt.Sprintf("Claude (%s via claude CLI + setup-token)", cfg.ClaudeModel)
+			}
 			return fmt.Sprintf("Claude (%s via Anthropic API Key)", cfg.ClaudeModel)
 		}
 	}
@@ -94,6 +97,12 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 				}
 				return "", "", errors.New("Anthropic API Key is empty (configure in Settings or switch Claude Auth Mode to Antigravity)")
 			}
+			if isClaudeOAuthToken(cfg.ClaudeAPIKey) {
+				// A "claude setup-token" token is not an API key: the API rejects it
+				// as x-api-key. The claude CLI accepts it via CLAUDE_CODE_OAUTH_TOKEN.
+				out, err := e.runClaudeCLI(ctx, prompt)
+				return out, "Claude CLI (setup-token)", err
+			}
 			out, err := e.callAnthropicAPI(ctx, cfg.ClaudeAPIKey, cfg.ClaudeModel, prompt)
 			return out, "Claude API (" + cfg.ClaudeModel + ")", err
 		}
@@ -140,7 +149,7 @@ func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) 
 	if bin == "" {
 		bin = "agy"
 	}
-	return runCLI(ctx, "agy CLI", bin, antigravityArgs(model, prompt))
+	return runCLI(ctx, "agy CLI", bin, antigravityArgs(model, prompt), nil)
 }
 
 // cliTimeout bounds one CLI call; generating a multi-panel JSON answer can take a while.
@@ -148,12 +157,15 @@ var cliTimeout = 120 * time.Second
 
 // runCLI runs an AI CLI in a neutral directory (so no project CLAUDE.md or
 // settings get picked up) and returns its trimmed stdout.
-func runCLI(ctx context.Context, label, bin string, args []string) (string, error) {
+func runCLI(ctx context.Context, label, bin string, args, extraEnv []string) (string, error) {
 	runCtx, cancel := context.WithTimeout(ctx, cliTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, bin, args...)
 	cmd.Dir = os.TempDir()
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -193,7 +205,30 @@ func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, err
 	if bin == "" {
 		bin = "claude"
 	}
-	return runCLI(ctx, "claude CLI", bin, claudeCLIArgs(e.Config.ClaudeModel, prompt))
+	var env []string
+	if tok := strings.TrimSpace(e.Config.ClaudeAPIKey); isClaudeOAuthToken(tok) {
+		env = []string{"CLAUDE_CODE_OAUTH_TOKEN=" + tok}
+	}
+	return runCLI(ctx, "claude CLI", bin, claudeCLIArgs(e.Config.ClaudeModel, prompt), env)
+}
+
+// anthropicModelID turns the Antigravity-style name ("claude-sonnet-5-5-medium")
+// into an API model ID ("claude-sonnet-5-5").
+func anthropicModelID(model string) string {
+	m := strings.TrimSpace(model)
+	if m == "" {
+		return "claude-sonnet-5-5"
+	}
+	for _, eff := range []string{"-low", "-medium", "-high"} {
+		m = strings.TrimSuffix(m, eff)
+	}
+	return m
+}
+
+// isClaudeOAuthToken reports whether key is a long-lived token from "claude setup-token"
+// rather than an Anthropic API key (sk-ant-api…).
+func isClaudeOAuthToken(key string) bool {
+	return strings.HasPrefix(strings.TrimSpace(key), "sk-ant-oat")
 }
 
 // claudeCLIArgs builds a plain text-in/text-out claude call: no tools, MCP servers,
@@ -283,10 +318,7 @@ func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt stri
 }
 
 func (e *AIEngine) callAnthropicAPI(ctx context.Context, apiKey, model, prompt string) (string, error) {
-	apiModel := model
-	if apiModel == "" || strings.Contains(apiModel, "5-5") {
-		apiModel = "claude-sonnet-4-20250514"
-	}
+	apiModel := anthropicModelID(model)
 	payload := map[string]any{
 		"model":      apiModel,
 		"max_tokens": 4096,

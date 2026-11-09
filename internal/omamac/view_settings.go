@@ -69,11 +69,20 @@ func (a *App) renderAISettings(c *ui.Context) {
 					ui.Field(c, "Modell", func() {
 						changed = ui.Select(c.Key("cfg-cl-model"), &a.claudeModel, claudeModelList).Width(320).Changed() || changed
 					})
-					if a.claudeAuthIdx == 0 {
-						ui.Field(c, "API-Key", func() {
+					if a.claudeAuthIdx == 0 || a.claudeAuthIdx == 2 {
+						label, placeholder := "API-Key", "sk-ant-api… oder Token aus „claude setup-token“"
+						if a.claudeAuthIdx == 2 {
+							label, placeholder = "Token", "optional: sk-ant-oat… aus „claude setup-token“"
+						}
+						ui.Field(c, label, func() {
 							changed = ui.TextInput(c.Key("cfg-cl-key"), &a.claudeKey).Password().
-								Placeholder("sk-ant-…").FillWidth().Changed() || changed
+								Placeholder(placeholder).FillWidth().Changed() || changed
 						})
+						if isClaudeOAuthToken(a.claudeKey) {
+							ui.Field(c, "", func() {
+								ui.Text(c, "Token aus „claude setup-token“ – wird über die claude CLI genutzt (kein API-Key).").FontSize(12).TextColor(t.TextMuted)
+							})
+						}
 					}
 				}
 			})
