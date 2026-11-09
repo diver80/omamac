@@ -1,8 +1,10 @@
 package omamac
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -238,8 +240,18 @@ func TestGenerateScreenshots(t *testing.T) {
 	savePNG("01-panels.png", app.RenderStudioView, 1320, 820)
 
 	app.showCreate = true
+	app.createImages = []string{filepath.Join("..", "..", "resources", "icon.png")}
 	savePNG("02-neues-panel.png", app.RenderStudioView, 1320, 820)
 	app.showCreate = false
+	app.createImages = nil
+
+	// The "KI arbeitet" dialog while the AI streams its answer
+	app.aiRun = &aiRun{title: "Neues Panel: mydealz 3D-Drucker-Deals", started: time.Now().Add(-14 * time.Second), cancel: func() {}}
+	app.aiRun.steps = []string{"Bild icon.png vorbereitet (31 KB)", "Anfrage an Claude (claude-sonnet-5-5-medium via claude CLI) gesendet (2840 Zeichen, 1 Bild(er))"}
+	app.aiRun.output.WriteString("[\n  {\n    \"id\": \"mydealz-3d-drucker\",\n    \"title\": \"3D-Drucker-Deals\",\n    \"subtitle\": \"mydealz · Idealo-Zielpreis $IDEALO_TARGET_PRICE\",\n    \"icon\": \"🖨\",\n    \"type\": \"native\",\n    \"refresh_seconds\": 300,\n    \"command\": \"python3 - <<'PY'\\nimport json, os, urllib.request")
+	app.busy, app.busyLabel, app.showAIRun = true, "KI erstellt das Panel …", true
+	savePNG("07-ki-ausgabe.png", app.RenderStudioView, 1320, 820)
+	app.busy, app.showAIRun, app.aiRun = false, false, nil
 
 	app.activeTab = TabStore
 	savePNG("03-vorlagen.png", app.RenderStudioView, 1320, 760)
@@ -269,7 +281,7 @@ func TestClaudeCLIFailureIsAnError(t *testing.T) {
 	}
 	cfg := offlineGeminiConfig(t)
 	cfg.ClaudeCLIPath = bin
-	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
+	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi", nil)
 	if err == nil || !strings.Contains(err.Error(), "Usage Limit Reached") {
 		t.Fatalf("err = %v; want an error that names the CLI output", err)
 	}
@@ -286,7 +298,7 @@ func TestCLITimeoutIsNamed(t *testing.T) {
 	defer func() { cliTimeout = orig }()
 	cfg := offlineGeminiConfig(t)
 	cfg.ClaudeCLIPath = bin
-	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi")
+	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi", nil)
 	if err == nil || !strings.Contains(err.Error(), "Zeitüberschreitung") || strings.Contains(err.Error(), "Warning") {
 		t.Fatalf("err = %v; want a plain timeout error", err)
 	}
@@ -314,14 +326,86 @@ func TestSetupTokenRunsClaudeCLI(t *testing.T) {
 }
 
 func TestClaudeCLIArgs(t *testing.T) {
-	got := strings.Join(claudeCLIArgs("claude-sonnet-5-5-medium", "PROMPT"), " ")
-	for _, want := range []string{"--tools  ", "--strict-mcp-config", "--model sonnet", "--effort medium", "-p PROMPT"} {
+	got := strings.Join(claudeCLIArgs("claude-sonnet-5-5-medium"), " ")
+	for _, want := range []string{"--tools  ", "--strict-mcp-config", "--model sonnet", "--effort medium", "--input-format stream-json", "--include-partial-messages"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("args %q lack %q", got, want)
 		}
 	}
-	if !strings.HasSuffix(got, "-p PROMPT") {
-		t.Fatalf("prompt must be the value of -p: %q", got)
+}
+
+// The claude CLI gets the prompt and images as one stream-json message on stdin
+// and its streamed text reaches the progress callback as it comes.
+func TestClaudeCLIStreamsWithImages(t *testing.T) {
+	dir := t.TempDir()
+	stdinCopy := filepath.Join(dir, "stdin.json")
+	bin := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\ncat > " + stdinCopy + "\n" +
+		`echo '{"type":"system","subtype":"init"}'` + "\n" +
+		`echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hal"}}}'` + "\n" +
+		`echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"lo"}}}'` + "\n" +
+		`echo '{"type":"result","subtype":"success","is_error":false,"result":"Hallo"}'` + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := offlineGeminiConfig(t)
+	cfg.ClaudeCLIPath = bin
+	var streamed strings.Builder
+	var steps []string
+	ctx := WithAIProgress(context.Background(), &AIProgress{
+		Step:   func(s string) { steps = append(steps, s) },
+		Output: func(s string) { streamed.WriteString(s) },
+	})
+	img := AIImage{Path: "x.png", MediaType: "image/png", Data: []byte{0x89, 'P', 'N', 'G'}}
+	out, err := NewAIEngine(cfg).runClaudeCLI(ctx, "Beschreibe das Bild", []AIImage{img})
+	if err != nil || out != "Hallo" || streamed.String() != "Hallo" {
+		t.Fatalf("out=%q streamed=%q err=%v", out, streamed.String(), err)
+	}
+	sent, _ := os.ReadFile(stdinCopy)
+	var msg struct {
+		Type    string
+		Message struct {
+			Content []map[string]any
+		}
+	}
+	if err := json.Unmarshal(sent, &msg); err != nil || msg.Type != "user" || len(msg.Message.Content) != 2 || msg.Message.Content[1]["type"] != "image" {
+		t.Fatalf("stdin = %s (err %v)", sent, err)
+	}
+}
+
+// An error result in the stream (quota, login) is an error, not an answer.
+func TestClaudeCLIStreamErrorResult(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	script := "#!/bin/sh\ncat >/dev/null\n" + `echo '{"type":"result","subtype":"error","is_error":true,"result":"Credit balance is too low"}'` + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := offlineGeminiConfig(t)
+	cfg.ClaudeCLIPath = bin
+	_, err := NewAIEngine(cfg).runClaudeCLI(context.Background(), "hi", nil)
+	if err == nil || !strings.Contains(err.Error(), "Credit balance is too low") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadAIImageConvertsLargeImages(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "big.png")
+	img := image.NewRGBA(image.Rect(0, 0, 2400, 1200))
+	f, err := os.Create(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	got, err := LoadAIImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(got.Data))
+	if err != nil || format != "jpeg" || got.MediaType != "image/jpeg" || cfg.Width != maxImageSide {
+		t.Fatalf("format=%s media=%s width=%d err=%v", format, got.MediaType, cfg.Width, err)
 	}
 }
 

@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -27,7 +26,7 @@ func NewAIEngine(cfg *Config) *AIEngine {
 	return &AIEngine{
 		Config: cfg,
 		HTTPClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 150 * time.Second,
 		},
 	}
 }
@@ -71,6 +70,26 @@ func (e *AIEngine) TestConnection(ctx context.Context) (string, error) {
 
 // Complete sends a prompt to the active LLM provider (Gemini or Claude) and returns the raw text response.
 func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string, error) {
+	return e.CompleteRequest(ctx, prompt, nil)
+}
+
+// CompleteRequest sends a prompt with attached images to the active provider,
+// reports the run to the context's AIProgress and returns the answer and the provider used.
+func (e *AIEngine) CompleteRequest(ctx context.Context, prompt string, images []AIImage) (string, string, error) {
+	start := time.Now()
+	if len(images) > 0 {
+		progressStep(ctx, "Anfrage an %s gesendet (%d Zeichen, %d Bild(er))", e.ActiveProviderSummary(), len(prompt), len(images))
+	} else {
+		progressStep(ctx, "Anfrage an %s gesendet (%d Zeichen)", e.ActiveProviderSummary(), len(prompt))
+	}
+	out, label, err := e.complete(ctx, prompt, images)
+	if err == nil {
+		progressStep(ctx, "Antwort erhalten nach %d s (%d Zeichen)", int(time.Since(start).Seconds()), len(out))
+	}
+	return out, label, err
+}
+
+func (e *AIEngine) complete(ctx context.Context, prompt string, images []AIImage) (string, string, error) {
 	cfg := e.Config
 	if cfg.ActiveProvider == ProviderClaude {
 		switch cfg.ClaudeAuthMode {
@@ -79,10 +98,10 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 			if model == "" {
 				model = "claude-sonnet-5-5-medium"
 			}
-			out, err := e.runAntigravityCLI(ctx, model, prompt)
+			out, err := e.runAntigravityCLI(ctx, model, prompt, images)
 			return out, "Claude/Antigravity (" + model + ")", err
 		case ClaudeAuthCLI:
-			out, err := e.runClaudeCLI(ctx, prompt)
+			out, err := e.runClaudeCLI(ctx, prompt, images)
 			return out, "Claude CLI", err
 		default:
 			if strings.TrimSpace(cfg.ClaudeAPIKey) == "" {
@@ -92,7 +111,7 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 					if !strings.Contains(model, "5-5") {
 						model = "claude-sonnet-5-5-medium"
 					}
-					out, err := e.runAntigravityCLI(ctx, model, prompt)
+					out, err := e.runAntigravityCLI(ctx, model, prompt, images)
 					return out, "Claude/Antigravity Fallback (" + model + ")", err
 				}
 				return "", "", errors.New("Anthropic API Key is empty (configure in Settings or switch Claude Auth Mode to Antigravity)")
@@ -100,10 +119,10 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 			if isClaudeOAuthToken(cfg.ClaudeAPIKey) {
 				// A "claude setup-token" token is not an API key: the API rejects it
 				// as x-api-key. The claude CLI accepts it via CLAUDE_CODE_OAUTH_TOKEN.
-				out, err := e.runClaudeCLI(ctx, prompt)
+				out, err := e.runClaudeCLI(ctx, prompt, images)
 				return out, "Claude CLI (setup-token)", err
 			}
-			out, err := e.callAnthropicAPI(ctx, cfg.ClaudeAPIKey, cfg.ClaudeModel, prompt)
+			out, err := e.callAnthropicAPI(ctx, cfg.ClaudeAPIKey, cfg.ClaudeModel, prompt, images)
 			return out, "Claude API (" + cfg.ClaudeModel + ")", err
 		}
 	}
@@ -112,13 +131,13 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 	if cfg.GeminiAuthMode == GeminiAuthAntigravity {
 		st := InspectAntigravityAuth(cfg)
 		if st.Available {
-			out, err := e.runAntigravityCLI(ctx, cfg.GeminiModel, prompt)
+			out, err := e.runAntigravityCLI(ctx, cfg.GeminiModel, prompt, images)
 			if err == nil {
 				return out, "Gemini/Antigravity (" + cfg.GeminiModel + ")", nil
 			}
 			// If API key is also configured, try it as backup
 			if strings.TrimSpace(cfg.GeminiAPIKey) != "" {
-				out2, err2 := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt)
+				out2, err2 := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt, images)
 				if err2 == nil {
 					return out2, "Gemini API Key Fallback", nil
 				}
@@ -126,7 +145,7 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 			return "", "", err
 		}
 		if strings.TrimSpace(cfg.GeminiAPIKey) != "" {
-			out, err := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt)
+			out, err := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt, images)
 			return out, "Gemini API Key", err
 		}
 		return "", "", errors.New("Antigravity login not active and no Gemini API Key set – click 'Antigravity Login' or enter an API Key in Settings")
@@ -134,52 +153,41 @@ func (e *AIEngine) Complete(ctx context.Context, prompt string) (string, string,
 
 	if strings.TrimSpace(cfg.GeminiAPIKey) == "" {
 		if st := InspectAntigravityAuth(cfg); st.Available {
-			out, err := e.runAntigravityCLI(ctx, cfg.GeminiModel, prompt)
+			out, err := e.runAntigravityCLI(ctx, cfg.GeminiModel, prompt, images)
 			return out, "Gemini/Antigravity (" + cfg.GeminiModel + ")", err
 		}
 		return "", "", errors.New("Gemini API Key is empty (enter key in Settings or switch to Antigravity Login)")
 	}
-	out, err := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt)
+	out, err := e.callGeminiAPI(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, prompt, images)
 	return out, "Gemini API (" + cfg.GeminiModel + ")", err
 }
 
-func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string) (string, error) {
+func (e *AIEngine) runAntigravityCLI(ctx context.Context, model, prompt string, images []AIImage) (string, error) {
 	st := InspectAntigravityAuth(e.Config)
 	bin := st.CLIPath
 	if bin == "" {
 		bin = "agy"
 	}
-	return runCLI(ctx, "agy CLI", bin, antigravityArgs(model, prompt), nil)
+	// agy takes images as files: allow their folders and name them in the prompt.
+	var extra []string
+	if len(images) > 0 {
+		dirs := map[string]bool{}
+		var paths []string
+		for _, img := range images {
+			if d := filepath.Dir(img.Path); !dirs[d] {
+				dirs[d] = true
+				extra = append(extra, "--add-dir", d)
+			}
+			paths = append(paths, img.Path)
+		}
+		prompt += "\n\nAttached image files (open and look at each one before answering):\n" + strings.Join(paths, "\n")
+	}
+	args := append(extra, antigravityArgs(model, prompt)...)
+	return runCLI(ctx, "agy CLI", bin, args, nil, nil, func(line string) { progressOutput(ctx, line+"\n") })
 }
 
 // cliTimeout bounds one CLI call; generating a multi-panel JSON answer can take a while.
-var cliTimeout = 120 * time.Second
-
-// runCLI runs an AI CLI in a neutral directory (so no project CLAUDE.md or
-// settings get picked up) and returns its trimmed stdout.
-func runCLI(ctx context.Context, label, bin string, args, extraEnv []string) (string, error) {
-	runCtx, cancel := context.WithTimeout(ctx, cliTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(runCtx, bin, args...)
-	cmd.Dir = os.TempDir()
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	out := strings.TrimSpace(stdout.String())
-	if err != nil {
-		if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-			return "", fmt.Errorf("%s: keine Antwort nach %d s (Zeitüberschreitung)", label, int(cliTimeout.Seconds()))
-		}
-		// CLIs print quota/login errors ("Usage Limit Reached") to stdout and exit non-zero.
-		return "", fmt.Errorf("%s: %v: %s", label, err, cliErrorDetail(out, stderr.String()))
-	}
-	return out, nil
-}
+var cliTimeout = 150 * time.Second
 
 // antigravityArgs builds the agy command line. -p (--print) takes the prompt as
 // its value, so it goes last: "-p --disable-slash-commands <prompt>" sent the
@@ -200,7 +208,7 @@ func (e *AIEngine) unreachableErr(providerLabel string, err error) error {
 	return fmt.Errorf("KI nicht erreichbar (%s): %w", providerLabel, err)
 }
 
-func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, error) {
+func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string, images []AIImage) (string, error) {
 	bin := e.Config.ClaudeCLIPath
 	if bin == "" {
 		bin = "claude"
@@ -209,7 +217,16 @@ func (e *AIEngine) runClaudeCLI(ctx context.Context, prompt string) (string, err
 	if tok := strings.TrimSpace(e.Config.ClaudeAPIKey); isClaudeOAuthToken(tok) {
 		env = []string{"CLAUDE_CODE_OAUTH_TOKEN=" + tok}
 	}
-	return runCLI(ctx, "claude CLI", bin, claudeCLIArgs(e.Config.ClaudeModel, prompt), env)
+	// stream-json both ways: images go in as content blocks, text comes back as it is written.
+	col := &claudeStreamCollector{ctx: ctx}
+	if _, err := runCLI(ctx, "claude CLI", bin, claudeCLIArgs(e.Config.ClaudeModel), env, claudeStreamInput(prompt, images), col.line); err != nil {
+		return "", err
+	}
+	out, err := col.answer()
+	if err != nil {
+		return "", fmt.Errorf("claude CLI: %w", err)
+	}
+	return out, nil
 }
 
 // anthropicModelID turns the Antigravity-style name ("claude-sonnet-5-5-medium")
@@ -235,7 +252,7 @@ func isClaudeOAuthToken(key string) bool {
 // skills or saved session — the full agent setup made one call take longer than the timeout.
 // The configured model uses Antigravity names ("claude-sonnet-5-5-medium"), so it is
 // mapped to the CLI's family alias plus effort level.
-func claudeCLIArgs(model, prompt string) []string {
+func claudeCLIArgs(model string) []string {
 	args := []string{"--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"}
 	m := strings.ToLower(model)
 	for _, fam := range []string{"fable", "opus", "sonnet", "haiku"} {
@@ -250,7 +267,7 @@ func claudeCLIArgs(model, prompt string) []string {
 			break
 		}
 	}
-	return append(args, "-p", prompt)
+	return append(args, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages")
 }
 
 // cliErrorDetail returns the most useful part of a failed CLI's output for the error message.
@@ -265,21 +282,19 @@ func cliErrorDetail(stdout, stderr string) string {
 	return truncateStr(strings.Join(strings.Fields(msg), " "), 200)
 }
 
-func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt string) (string, error) {
+func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt string, images []AIImage) (string, error) {
 	apiModel := model
 	if apiModel == "" || strings.HasPrefix(apiModel, "gemini-4-") || strings.HasPrefix(apiModel, "gemini-3.8-") {
 		apiModel = "gemini-2.5-flash"
 	}
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", apiModel)
 
+	parts := []map[string]any{{"text": prompt}}
+	for _, img := range images {
+		parts = append(parts, map[string]any{"inline_data": map[string]any{"mime_type": img.MediaType, "data": img.base64()}})
+	}
 	payload := map[string]any{
-		"contents": []map[string]any{
-			{
-				"parts": []map[string]any{
-					{"text": prompt},
-				},
-			},
-		},
+		"contents": []map[string]any{{"parts": parts}},
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -314,16 +329,24 @@ func (e *AIEngine) callGeminiAPI(ctx context.Context, apiKey, model, prompt stri
 	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
 		return "", errors.New("Gemini API returned empty candidates")
 	}
+	progressOutput(ctx, parsed.Candidates[0].Content.Parts[0].Text)
 	return parsed.Candidates[0].Content.Parts[0].Text, nil
 }
 
-func (e *AIEngine) callAnthropicAPI(ctx context.Context, apiKey, model, prompt string) (string, error) {
+func (e *AIEngine) callAnthropicAPI(ctx context.Context, apiKey, model, prompt string, images []AIImage) (string, error) {
 	apiModel := anthropicModelID(model)
+	content := []map[string]any{{"type": "text", "text": prompt}}
+	for _, img := range images {
+		content = append(content, map[string]any{
+			"type":   "image",
+			"source": map[string]any{"type": "base64", "media_type": img.MediaType, "data": img.base64()},
+		})
+	}
 	payload := map[string]any{
 		"model":      apiModel,
-		"max_tokens": 4096,
+		"max_tokens": 8192,
 		"messages": []map[string]any{
-			{"role": "user", "content": prompt},
+			{"role": "user", "content": content},
 		},
 	}
 	body, _ := json.Marshal(payload)
@@ -356,11 +379,12 @@ func (e *AIEngine) callAnthropicAPI(ctx context.Context, apiKey, model, prompt s
 	if len(parsed.Content) == 0 {
 		return "", errors.New("Anthropic API returned empty content")
 	}
+	progressOutput(ctx, parsed.Content[0].Text)
 	return parsed.Content[0].Text, nil
 }
 
 // GeneratePanels executes Prompt 1: creates 1 or multiple status panels (supporting "native", "html", or "both").
-func (e *AIEngine) GeneratePanels(ctx context.Context, userPrompt string, requestedType string, count int) ([]*PanelSpec, string, error) {
+func (e *AIEngine) GeneratePanels(ctx context.Context, userPrompt string, requestedType string, count int, images ...AIImage) ([]*PanelSpec, string, error) {
 	if count <= 0 {
 		count = 1
 	}
@@ -415,7 +439,8 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
   }
 ]`, count, userPrompt, requestedType, vaultCatalog)
 
-	rawResp, providerLabel, err := e.Complete(ctx, sysPrompt)
+	sysPrompt += imagePromptNote(len(images))
+	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	if err != nil {
 		return nil, providerLabel, e.unreachableErr(providerLabel, err)
@@ -453,6 +478,9 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 						Timestamp: now,
 					},
 				}
+				if strings.TrimSpace(p.Command) != "" {
+					progressStep(ctx, "Führe den Befehl von „%s“ zum ersten Mal aus …", p.Title)
+				}
 				_ = p.RunDataRefresh(ctx, vaultEnv...)
 			}
 			return panels, providerLabel, nil
@@ -463,7 +491,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 }
 
 // RefinePanel executes Prompt 2 (or 3+): takes an existing PanelSpec and applies a natural-language refinement prompt.
-func (e *AIEngine) RefinePanel(ctx context.Context, existing *PanelSpec, refinePrompt string) (*PanelSpec, string, error) {
+func (e *AIEngine) RefinePanel(ctx context.Context, existing *PanelSpec, refinePrompt string, images ...AIImage) (*PanelSpec, string, error) {
 	vaultCatalog := "None configured."
 	var vaultEnv []string
 	if e.Vault != nil {
@@ -485,7 +513,8 @@ REFINEMENT PROMPT (Prompt #2): %q
 Keep the same "id" (%q). If the user asks to switch between "native" and "html", update "type" and populate "metrics"/"rows" or "html" accordingly.
 Return ONLY the updated single JSON object (no markdown commentary outside JSON).`, string(currentJSON), vaultCatalog, refinePrompt, existing.ID)
 
-	rawResp, providerLabel, err := e.Complete(ctx, sysPrompt)
+	sysPrompt += imagePromptNote(len(images))
+	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	stepNum := len(existing.PromptHistory) + 1
 	if err != nil {
@@ -509,6 +538,9 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 				Timestamp: now,
 			})
 			updated.Normalize()
+			if strings.TrimSpace(updated.Command) != "" {
+				progressStep(ctx, "Führe den geänderten Befehl aus …")
+			}
 			_ = updated.RunDataRefresh(ctx, vaultEnv...)
 			return updated, providerLabel, nil
 		}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+- **Live-Ausgabe der KI:** Beim Erstellen und Anpassen öffnet sich ein Fenster mit den Arbeitsschritten und der Antwort der KI, während sie geschrieben wird (Claude CLI live, andere Anbieter am Ende). „Im Hintergrund“ blendet es aus, „Abbrechen“ stoppt die KI. Schlägt etwas fehl, bleibt das Fenster mit der vollständigen Ausgabe offen; „KI-Ausgabe“ in der Fehlerzeile öffnet es wieder.
+- **Bilder für die KI:** Screenshots, Mockups oder Beispiele beim Erstellen und Anpassen anhängen – per „📎 Bild …“, Drag & Drop oder ⌘V. Bis zu 5 Bilder; große Bilder und HEIC werden automatisch verkleinert und umgewandelt. Unterstützt von Claude (CLI, setup-token, API-Key) und Gemini-API-Key; mit Antigravity werden die Bilddateien dem Agenten freigegeben.
+- Zeitlimit für einen KI-Lauf auf 3 Minuten erhöht.
+
 ## 1.3.3
 
 - **Token aus „claude setup-token“ wird unterstützt:** Ein `sk-ant-oat…`-Token ist kein API-Key – die Anthropic-API lehnt ihn ab. OmaMac erkennt ihn jetzt im Feld „API-Key“ (oder im neuen Feld „Token“ beim Modus „Claude CLI“) und nutzt ihn über die claude CLI als `CLAUDE_CODE_OAUTH_TOKEN`. Damit läuft die KI auch nach Ablauf des normalen claude-Logins weiter.

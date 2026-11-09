@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -101,6 +102,14 @@ type App struct {
 	vaultNewDesc string
 
 	showHelpModal bool
+
+	createImages []string // images attached in the "Neues Panel" dialog
+	refineImages []string // images attached in the refine box
+	thumbs       map[string]ui.ImageSource
+
+	aiRun     *aiRun // the current or last AI run, shown in the "KI arbeitet" dialog
+	showAIRun bool
+	aiRunSeen int // output length the dialog last scrolled to
 
 	quitting  bool // set when the app quits: windows closing then must not unpin widgets or hide
 	busy      bool
@@ -732,28 +741,43 @@ func (a *App) triggerPrompt1Create() {
 		vaultEnv = a.Vault.EnvSlice()
 	}
 
+	imagePaths := append([]string(nil), a.createImages...)
 	a.busy = true
 	a.busyLabel = "KI erstellt das Panel …"
+	ctx, run := a.startAIRun("Neues Panel: " + truncateStr(prompt, 60))
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		created, providerUsed, err := a.AI.GeneratePanels(ctx, prompt, reqType, count)
+		var created []*PanelSpec
+		var providerUsed string
+		images, err := LoadAIImages(ctx, imagePaths)
+		if err == nil {
+			created, providerUsed, err = a.AI.GeneratePanels(ctx, prompt, reqType, count, images...)
+		}
+		if err == nil && len(created) == 0 {
+			err = errors.New("die KI hat kein Panel geliefert")
+		}
 		for _, p := range created {
 			p.Kind = "panel"
 			if asWidget {
 				p.Kind = "widget"
 				p.PinnedFloating = true
 			}
+			progressStep(ctx, "Prüfe „%s“ …", p.Title)
 			_, _ = p.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
 			a.busy = false
-			if err != nil || len(created) == 0 {
+			run.finish(err)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return
+				}
 				a.statusErr = true
 				a.statusMsg = "Kein Panel erstellt — " + errText(err)
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
+			a.showAIRun = false
+			a.createImages = nil
 			for _, p := range created {
 				_ = SavePanel(a.Config.PanelsDir, p)
 				a.panels = append(a.panels, p)
@@ -784,23 +808,37 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 		vaultEnv = a.Vault.EnvSlice()
 	}
 
+	imagePaths := append([]string(nil), a.refineImages...)
 	a.busy = true
 	a.busyLabel = fmt.Sprintf("KI passt „%s“ an …", target.Title)
+	ctx, run := a.startAIRun(fmt.Sprintf("„%s“ anpassen", target.Title))
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		updated, providerUsed, err := a.AI.RefinePanel(ctx, target, refinePrompt)
+		var updated *PanelSpec
+		var providerUsed string
+		images, err := LoadAIImages(ctx, imagePaths)
+		if err == nil {
+			updated, providerUsed, err = a.AI.RefinePanel(ctx, target, refinePrompt, images...)
+		}
+		if err == nil && updated == nil {
+			err = errors.New("die KI hat kein Panel geliefert")
+		}
 		if updated != nil {
+			progressStep(ctx, "Prüfe „%s“ …", updated.Title)
 			_, _ = updated.CheckPanelSpec(ctx, vaultEnv...)
 		}
 		a.updateUI(func() {
 			a.busy = false
-			if err != nil || updated == nil {
+			run.finish(err)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return
+				}
 				a.statusErr = true
 				a.statusMsg = "Panel unverändert — " + errText(err)
 				a.toast("⚠️ " + a.statusMsg)
 				return
 			}
+			a.showAIRun = false
 			replaced := false
 			for i, p := range a.panels {
 				if p.ID == panelID {
@@ -820,6 +858,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			}
 			a.syncAllPanelRuntimes()
 			a.prompt2Text = ""
+			a.refineImages = nil
 			a.clearStatus()
 			a.toast(fmt.Sprintf("„%s“ angepasst (%s)", updated.Title, providerUsed))
 		})

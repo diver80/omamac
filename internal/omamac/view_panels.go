@@ -178,11 +178,21 @@ func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 			FontSize(11.5).TextColor(t.TextMuted)
 		return
 	}
-	ui.Column(c.Key("refine")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+	box := ui.Column(c.Key("refine")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8)
+	if files := box.DroppedFiles(); files != nil {
+		a.addImages(&a.refineImages, files)
+	}
+	if box.FileDragOver() {
+		box.Border(2, t.Accent)
+	}
+	box.Children(func() {
 		ui.Text(c, "Mit KI anpassen").FontSize(13).Bold()
 		submit := ui.TextArea(c.Key("refine-prompt-"+sel.ID), &a.prompt2Text).
 			Placeholder("z. B. „Färbe den Status rot, wenn der Preis unter 400 € fällt“").
-			Height(56).FillWidth().Shortcut(ui.Cmd, ui.KeyEnter)
+			Height(56).FillWidth().
+			OnPaste(func(text string) bool { return text == "" && a.pasteImage(&a.refineImages) }).
+			Shortcut(ui.Cmd, ui.KeyEnter)
+		a.renderImageAttachments(c, "refine-images", &a.refineImages)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			if n := len(sel.PromptHistory); n > 0 {
 				label := fmt.Sprintf("Verlauf (%d)", n)

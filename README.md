@@ -7,7 +7,7 @@ The app's interface is in German.
 ## Features
 
 - **Panels for the menu bar and the desktop:** Every panel has two switches – "Menüleiste" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
-- **Create and change panels with a sentence:** "+ Neues Panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel.
+- **Create and change panels with a sentence:** "+ Neues Panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
 - **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
 - **Templates:** Add ready-made panels with a switch, or use one as the starting point for your own AI panel.

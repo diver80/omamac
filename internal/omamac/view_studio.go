@@ -34,6 +34,9 @@ func (a *App) RenderStudioView(c *ui.Context) {
 		if a.statusErr && a.statusMsg != "" {
 			ui.Row(c).FillWidth().Padding(8, 16).Background(t.Danger.Alpha(0.10)).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, a.statusMsg).FontSize(12).TextColor(t.Danger).Grow(1).MinWidth(0)
+				if a.aiRun != nil && ui.Button(c.Key("status-ai-log"), "KI-Ausgabe").Tooltip("Was die KI geantwortet hat").Clicked() {
+					a.showAIRun = true
+				}
 				if ui.Button(c.Key("status-dismiss"), "✕").Tooltip("Ausblenden").Clicked() {
 					a.clearStatus()
 				}
@@ -43,6 +46,7 @@ func (a *App) RenderStudioView(c *ui.Context) {
 
 	a.renderHelpModal(c)
 	a.renderCreateDialog(c)
+	a.renderAIRunDialog(c)
 
 	for _, msg := range a.toasts {
 		c.Toast(msg)
@@ -59,6 +63,9 @@ func (a *App) renderTopBar(c *ui.Context) {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Spinner(c).Size(14, 14)
 				ui.Text(c, a.busyLabel).FontSize(12).TextColor(t.TextMuted)
+				if a.aiRun != nil && !a.showAIRun && textButton(c, "hdr-ai-show", "Ausgabe ansehen") {
+					a.showAIRun = true
+				}
 			})
 		}
 		if ui.Button(c.Key("hdr-help-btn"), "?").Tooltip("Kurzanleitung").Clicked() {

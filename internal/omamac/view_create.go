@@ -34,16 +34,26 @@ func (a *App) openCreate(prompt string) {
 func (a *App) renderCreateDialog(c *ui.Context) {
 	t := c.Theme()
 	ui.Modal(c.Key("create"), &a.showCreate, func() {
-		ui.Column(c).Width(560).Gap(14).Children(func() {
+		dlg := ui.Column(c).Width(560).Gap(14)
+		if files := dlg.DroppedFiles(); files != nil {
+			a.addImages(&a.createImages, files)
+		}
+		if dlg.FileDragOver() {
+			dlg.Border(2, t.Accent).Radius(10)
+		}
+		dlg.Children(func() {
 			ui.Column(c).FillWidth().Gap(4).Children(func() {
 				ui.Text(c, "Neues Panel").FontSize(18).Bold()
-				ui.Text(c, "Beschreibe in einem Satz, was angezeigt werden soll. Variablen aus dem Tresor ($NAME) werden eingebunden.").
+				ui.Text(c, "Beschreibe in einem Satz, was angezeigt werden soll. Variablen aus dem Tresor ($NAME) werden eingebunden. Ein Screenshot oder Mockup hilft der KI oft mehr als viele Worte.").
 					FontSize(12).TextColor(t.TextMuted)
 			})
 
 			ui.TextArea(c.Key("create-prompt"), &a.prompt1Text).AutoFocus().
 				Placeholder("z. B. „Zeige die aktuellen 3D-Drucker-Deals von mydealz und warne, wenn der Idealo-Preis unter $IDEALO_TARGET_PRICE fällt“").
-				Height(96).FillWidth()
+				Height(96).FillWidth().
+				OnPaste(func(text string) bool { return text == "" && a.pasteImage(&a.createImages) })
+
+			a.renderImageAttachments(c, "create-images", &a.createImages)
 
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 				ui.Text(c, "Beispiele:").FontSize(11.5).TextColor(t.TextMuted)
