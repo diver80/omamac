@@ -277,6 +277,13 @@ func TestGenerateScreenshots(t *testing.T) {
 	savePNG("09-ki-ergebnis.png", app.RenderStudioView, 1320, 900)
 	app.busy, app.showAIRun, app.aiRun = false, false, nil
 
+	if sel := app.findPanel("04-mydealz-3d"); sel != nil {
+		app.openRename(sel)
+		app.renameMenu = "3D {status}"
+		savePNG("10-umbenennen.png", app.RenderStudioView, 1320, 820)
+		app.showRename = false
+	}
+
 	app.activeTab = TabStore
 	savePNG("03-vorlagen.png", app.RenderStudioView, 1320, 760)
 
@@ -604,5 +611,21 @@ func TestFormatJSONStream(t *testing.T) {
 	got := formatJSONStream(fenced, true)
 	if !strings.HasPrefix(got, "Hier:\n```json\n[") || !strings.Contains(got, "\"line1\n      line2\"") || !strings.HasSuffix(got, "]\n```") {
 		t.Fatalf("fenced = %q", got)
+	}
+}
+
+// The user's own menu bar text replaces the script's, with {status} standing for it.
+func TestMenuBarText(t *testing.T) {
+	p := &PanelSpec{Title: "JWT-Audit", Icon: "🛡️", BadgeText: "Audit ✓", Status: "ok"}
+	if got := p.TrayLabel(); got != "🛡️ Audit ✓" {
+		t.Fatalf("automatic = %q", got)
+	}
+	p.MenuBarText = "Helvetia {status}"
+	if got := p.TrayLabel(); got != "🛡️ Helvetia Audit ✓" {
+		t.Fatalf("with token = %q", got)
+	}
+	p.MenuBarText, p.Status = "Helvetia", "crit"
+	if got := p.TrayLabel(); got != "🔴 🛡️ Helvetia" {
+		t.Fatalf("fixed, critical = %q", got)
 	}
 }

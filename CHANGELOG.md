@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+- **Panels umbenennen:** „Umbenennen …“ im ⋯- und Rechtsklick-Menü oder ✎ beim gewählten Panel ändert Name, Symbol und den Text in der Menüleiste – auch bei den System-Modulen. Leer bleibt der Menüleisten-Text automatisch (vom Skript); `{status}` fügt den Wert des Skripts in den eigenen Text ein, z. B. „Helvetia {status}“. Eine Vorschau zeigt das Ergebnis; ein KI-Anpassen behält den eigenen Text.
+
 ## 1.5.0
 
 - **Jira-Zugangsdaten für alle Panels:** Jede Instanz aus Jira Quick-Access stellt `$JIRA_<NAME>_URL`, `$JIRA_<NAME>_EMAIL` und `$JIRA_<NAME>_API_TOKEN` bereit (z. B. `$JIRA_HELVETIA_API_TOKEN`). Panels und Aktionen bekommen sie als Umgebungsvariablen, die KI kennt nur die Namen. Kein zweites Eintragen im Tresor mehr; ein Tresor-Eintrag gleichen Namens hat Vorrang. Die Liste steht unter Einstellungen → Tresor.

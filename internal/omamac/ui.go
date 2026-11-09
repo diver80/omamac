@@ -78,6 +78,12 @@ type App struct {
 	selectedPanelID string
 	prompt2Text     string
 
+	renameID    string // panel in the "Umbenennen" dialog
+	showRename  bool
+	renameTitle string
+	renameIcon  string
+	renameMenu  string
+
 	confirmDeleteID string // panel whose deletion awaits confirmation
 	confirmDelete   bool
 

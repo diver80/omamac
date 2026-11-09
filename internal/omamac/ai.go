@@ -549,6 +549,7 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 			updated.ID = existing.ID
 			updated.Enabled = existing.Enabled
 			updated.PinnedFloating = existing.PinnedFloating
+			updated.MenuBarText = existing.MenuBarText // the user's own; the AI doesn't manage it
 			if updated.Type == PanelTypeHTML && strings.TrimSpace(updated.HTML) == "" {
 				updated.HTML = synthesizeHTMLForPanel(updated)
 			}

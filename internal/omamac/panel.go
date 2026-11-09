@@ -69,6 +69,7 @@ type PanelSpec struct {
 	RequiresBrew   []string      `json:"requires_brew,omitempty"` // Homebrew packages required by command (macOS equivalent of requires { pacman: [...] })
 	Icon           string        `json:"icon"`                    // Emoji or short symbol for Menubar Tray / Tile
 	BadgeText      string        `json:"badge_text"`              // Text shown next to Icon in macOS Menubar
+	MenuBarText    string        `json:"menubar_text,omitempty"`  // the user's own menu bar text; "{status}" stands for BadgeText
 	Status         string        `json:"status"`                  // "ok", "warn", "crit", "info"
 	Type           PanelType     `json:"type"`                    // "native" (mygo/ui) or "html" (WebView)
 	IsBuiltin      bool          `json:"is_builtin,omitempty"`    // True for pre-delivered system modules (not AI-editable)
@@ -190,8 +191,14 @@ func (p *PanelSpec) TrayLabel() string {
 	if badge == "" {
 		badge = p.Title
 	}
+	if own := strings.TrimSpace(p.MenuBarText); own != "" {
+		badge = strings.TrimSpace(strings.ReplaceAll(own, MenuBarStatusToken, strings.TrimSpace(p.BadgeText)))
+	}
 	return strings.TrimSpace(fmt.Sprintf("%s%s %s", dot, p.Icon, badge))
 }
+
+// MenuBarStatusToken in MenuBarText is replaced by the status text the panel's script reports.
+const MenuBarStatusToken = "{status}"
 
 // RunDataRefresh executes the panel's shell Command (with Vault credentials injected as env vars)
 // and updates its live fields.
