@@ -100,11 +100,7 @@ func runOmaMacCheck(configPath, panelFile string) {
 		log.Fatalf("omamac-check app init failed: %v", err)
 	}
 
-	var env []string
-	if appState.Vault != nil {
-		env = appState.Vault.EnvSlice()
-	}
-	notes, checkErr := spec.CheckPanelSpec(context.Background(), env...)
+	notes, checkErr := spec.CheckPanelSpec(context.Background(), appState.PanelEnv()...)
 	for _, n := range notes {
 		fmt.Println("•", n)
 	}

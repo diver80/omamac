@@ -208,6 +208,9 @@ func (e *AIEngine) credentials() (catalog string, env []string) {
 	return credentialCatalogText(e.Vault, e.Jira), panelEnv(e.Vault, e.Jira)
 }
 
+// PanelEnv is the environment panel commands get: Jira instances, then the vault.
+func (a *App) PanelEnv() []string { return panelEnv(a.Vault, a.Jira) }
+
 // panelEnv is the environment added to every panel command and action.
 func panelEnv(v *Vault, j *JiraModuleState) []string {
 	env := j.CredentialEnv()

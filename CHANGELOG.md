@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2
+
+- `omamac -check` gibt dem geprüften Panel jetzt auch die Jira-Variablen (`$JIRA_<NAME>_*`) mit, wie die App selbst.
+
 ## 1.6.1
 
 - **Uhrzeiten in Ortszeit:** Die KI rechnet Zeitstempel aus APIs (meist UTC) beim Erstellen und Anpassen von Panels in die Ortszeit des Macs um, statt sie nur abzuschneiden. Bestehende Panels zeigen UTC weiter, bis sie per „Mit KI anpassen“ korrigiert werden.
