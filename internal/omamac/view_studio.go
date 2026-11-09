@@ -58,6 +58,8 @@ func (a *App) renderTopBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Padding(10, 16).Gap(10).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		ui.Text(c, "OmaMac").FontSize(15).Bold()
+		ui.Text(c, "v"+appVersion()).FontSize(11.5).TextColor(t.TextMuted).
+			Tooltip("Installierte Version – Updates unter Einstellungen → Allgemein")
 		ui.Spacer(c)
 		if a.busy {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {

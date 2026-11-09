@@ -215,11 +215,7 @@ func (a *App) renderGeneralSettings(c *ui.Context) {
 			})
 			ui.Field(c, "Version", func() {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					version := mygo.App.Version()
-					if version == "" {
-						version = "dev"
-					}
-					ui.Text(c, version).FontSize(12)
+					ui.Text(c, appVersion()).FontSize(12)
 					if ui.Button(c.Key("cfg-check-update"), "Nach Updates suchen").Clicked() {
 						updater.CheckForUpdates()
 					}

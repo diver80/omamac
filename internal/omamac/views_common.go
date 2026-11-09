@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -35,6 +36,14 @@ func statusColors(t *ui.Theme, status string) (ui.Color, ui.Color) {
 	default:
 		return t.Success.Alpha(0.18), t.Success
 	}
+}
+
+// appVersion is the installed version from the app bundle, "dev" when run from source.
+func appVersion() string {
+	if v := mygo.App.Version(); v != "" {
+		return v
+	}
+	return "dev"
 }
 
 // infoBox is a quiet hint in a dialog or form: a tinted box around what fn builds.

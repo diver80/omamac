@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2
+
+- Die installierte Version steht jetzt im Hauptfenster oben links neben „OmaMac“ (Tooltip: Updates unter Einstellungen → Allgemein).
+
 ## 1.8.1
 
 - **Zugangsdaten im Schlüsselbund:** Die API-Tokens der Jira-Instanzen und die Werte des Tresors liegen jetzt im macOS-Schlüsselbund – zusammen in einem Eintrag („de.diver80.omamac“), damit macOS nach einem Update nur einmal um Zugriff bittet („Immer erlauben“). Bisher standen die Jira-Tokens und eine Kopie der Tresor-Werte im Klartext in `jira_instances.json` bzw. `vault.json` (nur für den Benutzer lesbar). Beim ersten Start werden sie übernommen und aus den Dateien entfernt. Nur wenn der Schlüsselbund nicht nutzbar ist, bleiben sie wie bisher in der Datei; die Einstellungen sagen dann, warum.
