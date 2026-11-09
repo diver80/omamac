@@ -2,7 +2,7 @@
   "name": "OmaMac",
   "slug": "omamac",
   "identifier": "de.diver80.omamac",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "copyright": "© 2026 Frank Hess",
   "main": "./cmd/omamac",
   "out": "build.noindex",

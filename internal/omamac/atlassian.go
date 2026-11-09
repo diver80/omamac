@@ -77,6 +77,9 @@ type JiraInstanceConfig struct {
 	ActivityProjects string `json:"activity_projects,omitempty"`
 	// WeekJQL picks the tickets of the week board; empty = defaultWeekJQL.
 	WeekJQL string `json:"week_jql,omitempty"`
+	// ActivityOff / WeekOff leave an enabled instance out of Jira Activity / Jira Week.
+	ActivityOff bool `json:"activity_off,omitempty"`
+	WeekOff     bool `json:"week_off,omitempty"`
 }
 
 // JiraIssue represents a single ticket fetched via JQL.

@@ -78,7 +78,7 @@ func (j *JiraModuleState) RefreshActivityPanel(ctx context.Context, p *PanelSpec
 	// Instances on the same site with the same filter ask once (e.g. two JQL views of one site).
 	var targets []JiraInstanceConfig
 	seen := map[string]bool{}
-	for _, inst := range j.activeInstances() {
+	for _, inst := range j.activeInstances(activityOff) {
 		k := strings.TrimRight(inst.BaseURL, "/") + "|" + normalizeProjectKeys(inst.ActivityProjects)
 		if !seen[k] {
 			seen[k] = true
@@ -179,18 +179,22 @@ func syncActivityPanel(p *PanelSpec, all []JiraActivity, asked, failed int) {
 	p.Rows = rows
 }
 
-// activeInstances are the enabled instances that have a URL and a token.
-func (j *JiraModuleState) activeInstances() []JiraInstanceConfig {
+// activeInstances are the enabled instances that have a URL and a token, without
+// those a module leaves out (skip reports that, e.g. ActivityOff).
+func (j *JiraModuleState) activeInstances(skip func(JiraInstanceConfig) bool) []JiraInstanceConfig {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	var out []JiraInstanceConfig
 	for _, inst := range j.Instances {
-		if inst.Enabled && strings.TrimSpace(inst.BaseURL) != "" && strings.TrimSpace(inst.APIToken) != "" {
+		if inst.Enabled && strings.TrimSpace(inst.BaseURL) != "" && strings.TrimSpace(inst.APIToken) != "" && (skip == nil || !skip(inst)) {
 			out = append(out, inst)
 		}
 	}
 	return out
 }
+
+func activityOff(i JiraInstanceConfig) bool { return i.ActivityOff }
+func weekOff(i JiraInstanceConfig) bool     { return i.WeekOff }
 
 // normalizeProjectKeys turns "abc, XYZ;def" into "ABC XYZ DEF".
 func normalizeProjectKeys(s string) string {
@@ -374,7 +378,7 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 	}
 	lastSync := j.act.LastSync
 	j.mu.RUnlock()
-	instances := j.activeInstances()
+	instances := j.activeInstances(activityOff)
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
@@ -430,7 +434,7 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				if len(instances) == 0 {
-					ui.Text(c, "Noch keine Jira-Instanz eingerichtet – im Modul „Jira Quick-Access“ unter ⚙️ JQL anlegen.").FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "Keine Jira-Instanz für den Stream – unter ⚙️ auswählen oder anlegen.").FontSize(12).TextColor(t.TextMuted)
 				} else if len(entries) == 0 {
 					msg := "Keine Aktivität für diesen Filter."
 					if lastSync == "" {
@@ -473,38 +477,16 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 	})
 }
 
-// renderActivitySettings edits, per instance, which projects the stream shows.
+// renderActivitySettings picks the instances of the stream and, per instance, its projects.
 func (a *App) renderActivitySettings(c *ui.Context, p *PanelSpec, errs map[string]string) {
-	t := c.Theme()
-	j := a.Jira
-	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "Projekte je Instanz, durch Komma getrennt (z. B. „ABC, XYZ“). Leer = alle Projekte der Site. Instanzen ein- und ausschalten und Zugänge pflegen: Modul „Jira Quick-Access“ → ⚙️ JQL.").
-				FontSize(11.5).TextColor(t.TextMuted)
-			for idx := range j.Instances {
-				i := idx
-				inst := &j.Instances[i]
-				if !inst.Enabled {
-					continue
-				}
-				ui.Column(c.Key(fmt.Sprintf("act-cfg-%d", i))).FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(6).Children(func() {
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, inst.Name).FontSize(12).Bold()
-						ui.Text(c, inst.BaseURL).FontSize(11).TextColor(t.TextMuted).Grow(1).SingleLine()
-						if e := errs[inst.ID]; e != "" {
-							pillBadge(c, "FEHLER: "+truncateStr(e, 30), t.Danger.Alpha(0.2), t.Danger)
-						}
-					})
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-						ui.TextInput(c.Key(fmt.Sprintf("act-cfg-proj-%d", i)), &inst.ActivityProjects).Placeholder("alle Projekte").Grow(1)
-						if ui.Button(c.Key(fmt.Sprintf("act-cfg-save-%d", i)), "Speichern").Clicked() {
-							_ = j.Save()
-							a.refreshPanelAsync(p, "Activity-Filter für „"+inst.Name+"“ gespeichert")
-						}
-					})
-				})
-			}
-		})
+	a.renderModuleInstances(c, p, errs, moduleInstanceSettings{
+		key:         "act",
+		intro:       "Welche Instanzen der Stream zeigt, und je Instanz welche Projekte (durch Komma getrennt, z. B. „ABC, XYZ“; leer = alle Projekte der Site).",
+		off:         func(i *JiraInstanceConfig) *bool { return &i.ActivityOff },
+		text:        func(i *JiraInstanceConfig) *string { return &i.ActivityProjects },
+		placeholder: "alle Projekte",
+		saved:       "Activity-Filter gespeichert",
+		reload:      func() { a.refreshPanelAsync(p, "") },
 	})
 }
 

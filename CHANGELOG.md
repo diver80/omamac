@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.1
+
+- **Instanzen je Modul:** Unter ⚙️ von Jira Aktivität und Jira Woche schaltet ein Schalter je Instanz, ob sie dort mitmacht – unabhängig von den anderen Modulen. Darunter Projekte bzw. Wochen-JQL der Instanz. „Instanzen verwalten …“ öffnet Jira Quick-Access auf ⚙️ JQL, wo Instanzen angelegt, geändert oder für alle Module abgeschaltet werden.
+
 ## 1.7.0
 
 - **Jira Aktivität (neues System-Modul):** Der Activity Stream aller Jira-Instanzen in einer Liste, wie das Gadget in Data Center – wer was an welchem Ticket getan hat, mit Kommentartext, nach Tagen gruppiert. „Meine Tickets“ (zugewiesen, gemeldet oder beobachtet, letzte 14 Tage) oder „Alle“; je Instanz auf Projekte einschränkbar (⚙️). Filter nach Instanz und Suchfeld; ein Klick öffnet das Ticket.

@@ -104,3 +104,25 @@ func TestBuiltinJiraBoardsStartOff(t *testing.T) {
 		}
 	}
 }
+
+// Each module can leave out an instance; off in Jira Quick-Access means off everywhere.
+func TestModuleInstances(t *testing.T) {
+	j := NewJiraModuleState(t.TempDir())
+	j.Instances = []JiraInstanceConfig{
+		{ID: "a", BaseURL: "https://a.example.com", APIToken: "x", Enabled: true},
+		{ID: "b", BaseURL: "https://b.example.com", APIToken: "x", Enabled: true, WeekOff: true},
+		{ID: "c", BaseURL: "https://c.example.com", APIToken: "x", Enabled: false},
+	}
+	ids := func(l []JiraInstanceConfig) (s string) {
+		for _, i := range l {
+			s += i.ID
+		}
+		return
+	}
+	if got := ids(j.activeInstances(weekOff)); got != "a" {
+		t.Fatalf("week = %q", got)
+	}
+	if got := ids(j.activeInstances(activityOff)); got != "ab" {
+		t.Fatalf("activity = %q", got)
+	}
+}

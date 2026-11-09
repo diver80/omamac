@@ -95,7 +95,7 @@ func (j *JiraModuleState) RefreshWeekPanel(ctx context.Context, p *PanelSpec) {
 
 	start := weekStart(time.Now(), offset)
 	overdue := field == weekByDue && offset == 0
-	insts := j.activeInstances()
+	insts := j.activeInstances(weekOff)
 
 	// Results in the order of the instances: of two instances on one site, the first names a ticket.
 	type res struct {
@@ -244,7 +244,7 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 	}
 	loading, lastSync := j.week.Loading, j.week.LastSync
 	j.mu.RUnlock()
-	instances := j.activeInstances()
+	instances := j.activeInstances(weekOff)
 
 	start := weekStart(time.Now(), offset)
 	overdueCol := field == weekByDue && offset == 0
@@ -318,7 +318,7 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 			return
 		}
 		if len(instances) == 0 {
-			ui.Text(c, "Noch keine Jira-Instanz eingerichtet – im Modul „Jira Quick-Access“ unter ⚙️ JQL anlegen.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "Keine Jira-Instanz für die Woche – unter ⚙️ auswählen oder anlegen.").FontSize(12).TextColor(t.TextMuted)
 			return
 		}
 
@@ -388,39 +388,16 @@ func (a *App) renderWeekCard(c *ui.Context, cd weekCard, field int) {
 	})
 }
 
-// renderWeekSettings edits each instance's week JQL.
+// renderWeekSettings picks the instances of the week board and, per instance, its JQL.
 func (a *App) renderWeekSettings(c *ui.Context, p *PanelSpec, errs map[string]string) {
-	t := c.Theme()
-	j := a.Jira
-	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "Welche Tickets die Woche zeigt, je Instanz als JQL ohne Datum – OmaMac grenzt auf die Woche ein. Leer = „"+defaultWeekJQL+"“.").
-				FontSize(11.5).TextColor(t.TextMuted)
-			for idx := range j.Instances {
-				i := idx
-				inst := &j.Instances[i]
-				if !inst.Enabled {
-					continue
-				}
-				ui.Column(c.Key(fmt.Sprintf("wk-cfg-%d", i))).FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(6).Children(func() {
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, inst.Name).FontSize(12).Bold()
-						ui.Text(c, inst.BaseURL).FontSize(11).TextColor(t.TextMuted).Grow(1).SingleLine()
-						if e := errs[inst.ID]; e != "" {
-							pillBadge(c, "FEHLER: "+truncateStr(e, 30), t.Danger.Alpha(0.2), t.Danger)
-						}
-					})
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-						ui.TextInput(c.Key(fmt.Sprintf("wk-cfg-jql-%d", i)), &inst.WeekJQL).Placeholder(defaultWeekJQL).Grow(1)
-						if ui.Button(c.Key(fmt.Sprintf("wk-cfg-save-%d", i)), "Speichern").Clicked() {
-							_ = j.Save()
-							a.reloadWeek(p)
-							a.toast("Wochen-JQL für „" + inst.Name + "“ gespeichert")
-						}
-					})
-				})
-			}
-		})
+	a.renderModuleInstances(c, p, errs, moduleInstanceSettings{
+		key:         "wk",
+		intro:       "Welche Instanzen die Woche zeigt, und je Instanz welche Tickets – als JQL ohne Datum, OmaMac grenzt auf die Woche ein. Leer = „" + defaultWeekJQL + "“.",
+		off:         func(i *JiraInstanceConfig) *bool { return &i.WeekOff },
+		text:        func(i *JiraInstanceConfig) *string { return &i.WeekJQL },
+		placeholder: defaultWeekJQL,
+		saved:       "Wochen-JQL gespeichert",
+		reload:      func() { a.reloadWeek(p) },
 	})
 }
 
