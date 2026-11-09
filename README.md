@@ -2,6 +2,8 @@
 
 Status panels for the macOS menu bar and desktop, built by an AI from a single sentence, plus a keyboard launcher for apps and windows – inspired by Omarchy, written natively in Go with [`mygo`](https://github.com/egoist/mygo).
 
+The name is short for **Omarchy on the Mac**: [Omarchy](https://omarchy.org) is DHH's opinionated Arch Linux + Hyprland setup, whose keyboard-first launcher and status bar inspired OmaMac. OmaMac is an independent project, not affiliated with Omarchy, and brings that idea to macOS without replacing the macOS desktop.
+
 The app's interface is in German.
 
 ## Features
