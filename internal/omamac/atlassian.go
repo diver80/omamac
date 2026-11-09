@@ -72,14 +72,6 @@ type JiraInstanceConfig struct {
 	APIToken string `json:"api_token"`
 	JQLQuery string `json:"jql_query"`
 	Enabled  bool   `json:"enabled"`
-
-	// ActivityProjects limits the activity stream to these project keys ("ABC, XYZ"); empty = whole site.
-	ActivityProjects string `json:"activity_projects,omitempty"`
-	// WeekJQL picks the tickets of the week board; empty = defaultWeekJQL.
-	WeekJQL string `json:"week_jql,omitempty"`
-	// ActivityOff / WeekOff leave an enabled instance out of Jira Activity / Jira Week.
-	ActivityOff bool `json:"activity_off,omitempty"`
-	WeekOff     bool `json:"week_off,omitempty"`
 }
 
 // JiraIssue represents a single ticket fetched via JQL.
@@ -144,9 +136,9 @@ type JiraModuleState struct {
 	NewInstToken string
 	NewInstJQL   string
 
-	// Activity stream and week board (jira_activity.go, jira_week.go)
-	act  activityState
-	week weekState
+	// Per panel: Jira Activity and Jira Week run as one panel or several (jira_activity.go, jira_week.go)
+	acts  map[string]*activityState
+	weeks map[string]*weekState
 
 	boardWin  *mygo.Window
 	ticketWin *mygo.Window
@@ -971,132 +963,138 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 
 		case 2:
 			// Mode 2: Multi-Instance & JQL Configuration + 1-Click ~/.jira-quick-access Import
-			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-				ui.Column(c).FillWidth().Gap(8).Children(func() {
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, "Konfigurierte Jira-Instanzen & JQL").FontSize(12.5).Bold().Grow(1)
-						if ui.Button(c.Key("jira-reimport-jqa"), "🔄 Aus ~/.jira-quick-access importieren").Clicked() {
-							cnt := j.ImportFromJiraQuickAccess()
-							go func() {
-								j.RefreshJiraPanel(context.Background(), p)
-								a.updateUI(func() {
-									a.syncAllPanelRuntimes()
-									a.toast(fmt.Sprintf("%d Jira-Instanzen aus ~/.jira-quick-access importiert!", cnt))
-								})
-							}()
-						}
-					})
-
-					delIdx := -1
-					for idx := range j.Instances {
-						iCopy := idx
-						inst := &j.Instances[iCopy]
-						ui.Column(c.Key(fmt.Sprintf("jira-cfg-inst-%d", iCopy))).
-							FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(6).Children(func() {
-							ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-								if ui.Switch(c.Key(fmt.Sprintf("jira-inst-sw-%d", iCopy)), &inst.Enabled).Changed() {
-									_ = j.Save()
-									go func() {
-										j.RefreshJiraPanel(context.Background(), p)
-										a.updateUI(func() { a.syncAllPanelRuntimes() })
-									}()
-								}
-								ui.Text(c, inst.Name+" ("+inst.BaseURL+")").FontSize(12).Bold().Grow(1).SingleLine()
-								if errTxt := instErrors[inst.ID]; errTxt != "" {
-									pillBadge(c, "FEHLER: "+truncateStr(errTxt, 24), t.Danger.Alpha(0.2), t.Danger)
-								} else {
-									pillBadge(c, fmt.Sprintf("%d Tickets", instCounts[inst.ID]), t.Success.Alpha(0.2), t.Success)
-								}
-							})
-							ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "JQL:").FontSize(11).TextColor(t.TextMuted)
-								ui.TextInput(c.Key(fmt.Sprintf("jira-inst-jql-%d", iCopy)), &inst.JQLQuery).Grow(1)
-								if ui.Button(c.Key(fmt.Sprintf("jira-inst-del-%d", iCopy)), "🗑").Tooltip("Instanz entfernen").Clicked() {
-									delIdx = iCopy
-								}
-								if ui.Button(c.Key(fmt.Sprintf("jira-inst-save-%d", iCopy)), "Speichern").Clicked() {
-									_ = j.Save()
-									go func() {
-										j.RefreshJiraPanel(context.Background(), p)
-										a.updateUI(func() {
-											a.syncAllPanelRuntimes()
-											a.toast("JQL für '" + inst.Name + "' gespeichert & aktualisiert")
-										})
-									}()
-								}
-							})
-						})
-					}
-
-					if delIdx >= 0 && delIdx < len(j.Instances) {
-						removedName := j.Instances[delIdx].Name
-						j.mu.Lock()
-						j.Instances = append(j.Instances[:delIdx:delIdx], j.Instances[delIdx+1:]...)
-						j.mu.Unlock()
-						_ = j.Save()
-						a.toast("Jira-Instanz '" + removedName + "' entfernt")
-						go func() {
-							j.RefreshJiraPanel(context.Background(), p)
-							a.updateUI(func() { a.syncAllPanelRuntimes() })
-						}()
-					}
-
-					// Add a new Jira instance (Cloud: E-Mail + API-Token, Data Center: only PAT)
-					ui.Column(c.Key("jira-new-inst")).
-						FillWidth().Padding(8, 10).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).Gap(6).Children(func() {
-						ui.Text(c, "➕ Neue Jira-Instanz").FontSize(12).Bold()
-						ui.Row(c).FillWidth().Gap(6).Children(func() {
-							ui.TextInput(c.Key("jira-new-name"), &j.NewInstName).Placeholder("Name (z. B. Firma)").Grow(1)
-							ui.TextInput(c.Key("jira-new-url"), &j.NewInstURL).Placeholder("https://firma.atlassian.net").Grow(2)
-						})
-						ui.Row(c).FillWidth().Gap(6).Children(func() {
-							ui.TextInput(c.Key("jira-new-email"), &j.NewInstEmail).Placeholder("E-Mail (leer = Data Center PAT)").Grow(1)
-							ui.TextInput(c.Key("jira-new-token"), &j.NewInstToken).Placeholder("API-Token / PAT").Password().Grow(1)
-						})
-						ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-							ui.TextInput(c.Key("jira-new-jql"), &j.NewInstJQL).Placeholder(defaultJiraJQL).Grow(1)
-							if ui.PrimaryButton(c.Key("jira-new-add"), "Hinzufügen").
-								Disabled(strings.TrimSpace(j.NewInstURL) == "" || strings.TrimSpace(j.NewInstToken) == "").Clicked() {
-								name := strings.TrimSpace(j.NewInstName)
-								baseURL := strings.TrimRight(strings.TrimSpace(j.NewInstURL), "/")
-								if name == "" {
-									if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
-										name = strings.Split(u.Host, ".")[0]
-									} else {
-										name = baseURL
-									}
-								}
-								jql := strings.TrimSpace(j.NewInstJQL)
-								if jql == "" {
-									jql = defaultJiraJQL
-								}
-								j.mu.Lock()
-								j.Instances = append(j.Instances, JiraInstanceConfig{
-									ID:       fmt.Sprintf("inst-%d", time.Now().UnixNano()),
-									Name:     name,
-									BaseURL:  baseURL,
-									Email:    strings.TrimSpace(j.NewInstEmail),
-									APIToken: strings.TrimSpace(j.NewInstToken),
-									JQLQuery: jql,
-									Enabled:  true,
-								})
-								j.mu.Unlock()
-								_ = j.Save()
-								j.NewInstName, j.NewInstURL, j.NewInstEmail, j.NewInstToken, j.NewInstJQL = "", "", "", "", ""
-								go func() {
-									j.RefreshJiraPanel(context.Background(), p)
-									a.updateUI(func() {
-										a.syncAllPanelRuntimes()
-										a.toast("Jira-Instanz '" + name + "' hinzugefügt")
-									})
-								}()
-							}
-						})
-					})
-				})
-			})
+			ui.Scroll(c).Grow(1).FillWidth().Children(func() { a.renderJiraInstanceEditor(c, "jira") })
 		}
 	})
+}
+
+// renderJiraInstanceEditor manages the Jira instances all Jira modules use: switch, JQL of
+// Jira Quick-Access, remove, add, import. It sits in Jira Quick-Access (⚙️ JQL) and in the settings.
+func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
+	t := c.Theme()
+	j := a.Jira
+	j.mu.RLock()
+	instCounts := make(map[string]int, len(j.InstCounts))
+	for k, v := range j.InstCounts {
+		instCounts[k] = v
+	}
+	instErrors := make(map[string]string, len(j.InstErrors))
+	for k, v := range j.InstErrors {
+		instErrors[k] = v
+	}
+	j.mu.RUnlock()
+	ui.Column(c).FillWidth().Children(func() {
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, "Konfigurierte Jira-Instanzen & JQL").FontSize(12.5).Bold().Grow(1)
+				if ui.Button(c.Key(key+"-reimport-jqa"), "🔄 Aus ~/.jira-quick-access importieren").Clicked() {
+					cnt := j.ImportFromJiraQuickAccess()
+					a.jiraInstancesChanged(fmt.Sprintf("%d Jira-Instanzen aus ~/.jira-quick-access importiert!", cnt))
+				}
+			})
+
+			delIdx := -1
+			for idx := range j.Instances {
+				iCopy := idx
+				inst := &j.Instances[iCopy]
+				ui.Column(c.Key(key+fmt.Sprintf("-cfg-inst-%d", iCopy))).
+					FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Surface).Gap(6).Children(func() {
+					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+						if ui.Switch(c.Key(key+fmt.Sprintf("-inst-sw-%d", iCopy)), &inst.Enabled).Changed() {
+							_ = j.Save()
+							a.jiraInstancesChanged("")
+						}
+						ui.Text(c, inst.Name+" ("+inst.BaseURL+")").FontSize(12).Bold().Grow(1).SingleLine()
+						if errTxt := instErrors[inst.ID]; errTxt != "" {
+							pillBadge(c, "FEHLER: "+truncateStr(errTxt, 24), t.Danger.Alpha(0.2), t.Danger)
+						} else {
+							pillBadge(c, fmt.Sprintf("%d Tickets", instCounts[inst.ID]), t.Success.Alpha(0.2), t.Success)
+						}
+					})
+					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "JQL Quick-Access:").FontSize(11).TextColor(t.TextMuted)
+						ui.TextInput(c.Key(key+fmt.Sprintf("-inst-jql-%d", iCopy)), &inst.JQLQuery).Grow(1)
+						if ui.Button(c.Key(key+fmt.Sprintf("-inst-del-%d", iCopy)), "🗑").Tooltip("Instanz entfernen").Clicked() {
+							delIdx = iCopy
+						}
+						if ui.Button(c.Key(key+fmt.Sprintf("-inst-save-%d", iCopy)), "Speichern").Clicked() {
+							_ = j.Save()
+							a.jiraInstancesChanged("JQL für '" + inst.Name + "' gespeichert & aktualisiert")
+						}
+					})
+				})
+			}
+
+			if delIdx >= 0 && delIdx < len(j.Instances) {
+				removedName := j.Instances[delIdx].Name
+				j.mu.Lock()
+				j.Instances = append(j.Instances[:delIdx:delIdx], j.Instances[delIdx+1:]...)
+				j.mu.Unlock()
+				_ = j.Save()
+				a.toast("Jira-Instanz '" + removedName + "' entfernt")
+				a.jiraInstancesChanged("")
+			}
+
+			// Add a new Jira instance (Cloud: E-Mail + API-Token, Data Center: only PAT)
+			ui.Column(c.Key(key+"-new-inst")).
+				FillWidth().Padding(8, 10).Radius(8).Border(1, t.Accent.Alpha(0.45)).Background(t.Surface).Gap(6).Children(func() {
+				ui.Text(c, "➕ Neue Jira-Instanz").FontSize(12).Bold()
+				ui.Row(c).FillWidth().Gap(6).Children(func() {
+					ui.TextInput(c.Key(key+"-new-name"), &j.NewInstName).Placeholder("Name (z. B. Firma)").Grow(1)
+					ui.TextInput(c.Key(key+"-new-url"), &j.NewInstURL).Placeholder("https://firma.atlassian.net").Grow(2)
+				})
+				ui.Row(c).FillWidth().Gap(6).Children(func() {
+					ui.TextInput(c.Key(key+"-new-email"), &j.NewInstEmail).Placeholder("E-Mail (leer = Data Center PAT)").Grow(1)
+					ui.TextInput(c.Key(key+"-new-token"), &j.NewInstToken).Placeholder("API-Token / PAT").Password().Grow(1)
+				})
+				ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.TextInput(c.Key(key+"-new-jql"), &j.NewInstJQL).Placeholder(defaultJiraJQL).Grow(1)
+					if ui.PrimaryButton(c.Key(key+"-new-add"), "Hinzufügen").
+						Disabled(strings.TrimSpace(j.NewInstURL) == "" || strings.TrimSpace(j.NewInstToken) == "").Clicked() {
+						name := strings.TrimSpace(j.NewInstName)
+						baseURL := strings.TrimRight(strings.TrimSpace(j.NewInstURL), "/")
+						if name == "" {
+							if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+								name = strings.Split(u.Host, ".")[0]
+							} else {
+								name = baseURL
+							}
+						}
+						jql := strings.TrimSpace(j.NewInstJQL)
+						if jql == "" {
+							jql = defaultJiraJQL
+						}
+						j.mu.Lock()
+						j.Instances = append(j.Instances, JiraInstanceConfig{
+							ID:       fmt.Sprintf("inst-%d", time.Now().UnixNano()),
+							Name:     name,
+							BaseURL:  baseURL,
+							Email:    strings.TrimSpace(j.NewInstEmail),
+							APIToken: strings.TrimSpace(j.NewInstToken),
+							JQLQuery: jql,
+							Enabled:  true,
+						})
+						j.mu.Unlock()
+						_ = j.Save()
+						j.NewInstName, j.NewInstURL, j.NewInstEmail, j.NewInstToken, j.NewInstJQL = "", "", "", "", ""
+						a.jiraInstancesChanged("Jira-Instanz '" + name + "' hinzugefügt")
+					}
+				})
+			})
+		})
+	})
+}
+
+// jiraInstancesChanged reloads every Jira module after the instances changed.
+func (a *App) jiraInstancesChanged(msg string) {
+	for _, p := range a.panels {
+		if strings.HasPrefix(p.BuiltinKind, "jira-") {
+			a.refreshPanelAsync(p, "")
+		}
+	}
+	if msg != "" {
+		a.toast(msg)
+	}
 }
 
 func minInt(a, b int) int {

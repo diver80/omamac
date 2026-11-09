@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0
+
+- **Konfiguration je Panel für System-Module:** Jira Aktivität und Jira Woche speichern ihre Einstellungen im Panel selbst – welche Instanzen, je Instanz Projekte bzw. JQL, „Meine Tickets/Alle“ bzw. „Geändert/Erledigt/Fällig“. Bearbeiten im Hauptfenster unter der Vorschau („Konfiguration“) oder im Panel über ⚙️.
+- **Duplizieren:** Ein Modul lässt sich als weiteres Panel mit eigenen Einstellungen anlegen (z. B. eine Woche je Kunde) – über „Duplizieren“ in der Konfiguration oder im ⋯-Menü. Kopien lassen sich löschen.
+- **Einstellungen → Jira-Instanzen:** Zugänge aller Jira-Module zentral verwalten (anlegen, ändern, für alle abschalten); „Instanzen verwalten …“ in den Modulen führt dorthin. Jira Quick-Access zeigt dieselbe Liste weiter unter ⚙️ JQL.
+- KI-Panels bleiben wie bisher: ihre Einstellungen stehen im Abfrage-Skript.
+- Die Instanz-Schalter und Filter aus 1.7.x (an der Instanz gespeichert) entfallen.
+
 ## 1.7.1
 
 - **Instanzen je Modul:** Unter ⚙️ von Jira Aktivität und Jira Woche schaltet ein Schalter je Instanz, ob sie dort mitmacht – unabhängig von den anderen Modulen. Darunter Projekte bzw. Wochen-JQL der Instanz. „Instanzen verwalten …“ öffnet Jira Quick-Access auf ⚙️ JQL, wo Instanzen angelegt, geändert oder für alle Module abgeschaltet werden.

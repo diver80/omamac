@@ -86,31 +86,47 @@ func weekJQL(base string, field int, start time.Time, overdue bool) string {
 	return fmt.Sprintf("(%s) AND %s ORDER BY %s ASC", base, cond, name)
 }
 
-// RefreshWeekPanel loads the week the board shows from every enabled instance.
-func (j *JiraModuleState) RefreshWeekPanel(ctx context.Context, p *PanelSpec) {
+// weekSt is the runtime state of one Jira Week panel; it starts on the panel's date field.
+func (j *JiraModuleState) weekSt(p *PanelSpec) *weekState {
 	j.mu.Lock()
-	offset, field := j.week.Offset, j.week.Field
-	j.week.Loading = true
+	defer j.mu.Unlock()
+	if j.weeks == nil {
+		j.weeks = map[string]*weekState{}
+	}
+	st := j.weeks[p.ID]
+	if st == nil {
+		st = &weekState{Field: weekField(p)}
+		j.weeks[p.ID] = st
+	}
+	return st
+}
+
+// RefreshWeekPanel loads the week the board shows from the panel's instances.
+func (j *JiraModuleState) RefreshWeekPanel(ctx context.Context, p *PanelSpec) {
+	st := j.weekSt(p)
+	j.mu.Lock()
+	offset, field := st.Offset, st.Field
+	st.Loading = true
 	j.mu.Unlock()
 
 	start := weekStart(time.Now(), offset)
 	overdue := field == weekByDue && offset == 0
-	insts := j.activeInstances(weekOff)
+	srcs := j.sourcesFor(p)
 
 	// Results in the order of the instances: of two instances on one site, the first names a ticket.
 	type res struct {
 		found []foundIssue
 		err   error
 	}
-	results := make([]res, len(insts))
+	results := make([]res, len(srcs))
 	var wg sync.WaitGroup
-	for i, inst := range insts {
+	for i, src := range srcs {
 		wg.Add(1)
-		go func(i int, inst JiraInstanceConfig) {
+		go func(i int, src panelSource) {
 			defer wg.Done()
-			f, err := j.searchJQL(ctx, inst, weekJQL(inst.WeekJQL, field, start, overdue), 100)
+			f, err := j.searchJQL(ctx, src.JiraInstanceConfig, weekJQL(src.Filter, field, start, overdue), 100)
 			results[i] = res{f, err}
-		}(i, inst)
+		}(i, src)
 	}
 	wg.Wait()
 	var cards []weekCard
@@ -118,7 +134,7 @@ func (j *JiraModuleState) RefreshWeekPanel(ctx context.Context, p *PanelSpec) {
 	seen := map[string]bool{}
 	for i, r := range results {
 		if r.err != nil {
-			errs[insts[i].ID] = r.err.Error()
+			errs[srcs[i].ID] = r.err.Error()
 			continue
 		}
 		for _, f := range r.found {
@@ -137,17 +153,17 @@ func (j *JiraModuleState) RefreshWeekPanel(ctx context.Context, p *PanelSpec) {
 
 	j.mu.Lock()
 	// A page turned while loading: keep the old result out, the newer refresh brings its own.
-	stale := j.week.Offset != offset || j.week.Field != field
+	stale := st.Offset != offset || st.Field != field
 	if !stale {
-		j.week.Issues = cards
-		j.week.LoadedFor = weekKey(offset, field)
-		j.week.Errors = errs
-		j.week.LastSync = time.Now().Format("15:04:05")
-		j.week.Loading = false
+		st.Issues = cards
+		st.LoadedFor = weekKey(offset, field)
+		st.Errors = errs
+		st.LastSync = time.Now().Format("15:04:05")
+		st.Loading = false
 	}
 	j.mu.Unlock()
 	if !stale {
-		syncWeekPanel(p, cards, start, field, len(insts), len(errs))
+		syncWeekPanel(p, cards, start, field, len(srcs), len(errs))
 	}
 }
 
@@ -198,11 +214,12 @@ func syncWeekPanel(p *PanelSpec, cards []weekCard, start time.Time, field, asked
 // turnWeek pages the board (delta weeks; 0 = back to this week) and loads the new week.
 func (a *App) turnWeek(p *PanelSpec, delta int) {
 	j := a.Jira
+	st := j.weekSt(p)
 	j.mu.Lock()
 	if delta == 0 {
-		j.week.Offset = 0
+		st.Offset = 0
 	} else {
-		j.week.Offset += delta
+		st.Offset += delta
 	}
 	j.mu.Unlock()
 	a.reloadWeek(p)
@@ -225,26 +242,27 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 		return
 	}
 	sBg, sFg := statusColors(t, p.Status)
+	st := j.weekSt(p)
 	j.mu.RLock()
-	offset, field := j.week.Offset, j.week.Field
-	current := j.week.LoadedFor == weekKey(offset, field)
+	offset, field := st.Offset, st.Field
+	current := st.LoadedFor == weekKey(offset, field)
 	var cards []weekCard
 	perInst := map[string]int{}
 	if current {
-		for _, cd := range j.week.Issues {
+		for _, cd := range st.Issues {
 			perInst[cd.InstanceID]++
-			if j.week.FilterInst == "" || cd.InstanceID == j.week.FilterInst {
+			if st.FilterInst == "" || cd.InstanceID == st.FilterInst {
 				cards = append(cards, cd)
 			}
 		}
 	}
 	errs := map[string]string{}
-	for k, v := range j.week.Errors {
+	for k, v := range st.Errors {
 		errs[k] = v
 	}
-	loading, lastSync := j.week.Loading, j.week.LastSync
+	loading, lastSync := st.Loading, st.LastSync
 	j.mu.RUnlock()
-	instances := j.activeInstances(weekOff)
+	instances := j.sourcesFor(p)
 
 	start := weekStart(time.Now(), offset)
 	overdueCol := field == weekByDue && offset == 0
@@ -287,38 +305,40 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 			if lastSync != "" && current {
 				ui.Text(c, "Stand "+lastSync).FontSize(10.5).TextColor(t.TextMuted)
 			}
-			if ui.Segmented(c.Key("wk-field"), &j.week.Field, weekFieldLabels[:]...).Changed() {
+			if ui.Segmented(c.Key("wk-field"), &st.Field, weekFieldLabels[:]...).Changed() {
+				p.moduleConfig().DateField = weekFields[st.Field]
+				a.saveModuleConfig(p)
 				a.reloadWeek(p)
 			}
 			if ui.Button(c.Key("wk-cfg"), "⚙️").Tooltip("Welche Tickets je Instanz (JQL)").Clicked() {
-				j.week.ShowConfig = !j.week.ShowConfig
+				st.ShowConfig = !st.ShowConfig
 			}
 		})
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			instancePill(c, "wk-inst-all", "Alle Instanzen", j.week.FilterInst == "", func() { j.week.FilterInst = "" })
+			instancePill(c, "wk-inst-all", "Alle Instanzen", st.FilterInst == "", func() { st.FilterInst = "" })
 			for _, inst := range instances {
 				id := inst.ID
 				lbl := fmt.Sprintf("%s (%d)", inst.Name, perInst[id])
 				if errs[id] != "" {
 					lbl = inst.Name + " (⚠)"
 				}
-				instancePill(c, "wk-inst-"+id, lbl, j.week.FilterInst == id, func() {
-					if j.week.FilterInst == id {
-						j.week.FilterInst = ""
+				instancePill(c, "wk-inst-"+id, lbl, st.FilterInst == id, func() {
+					if st.FilterInst == id {
+						st.FilterInst = ""
 					} else {
-						j.week.FilterInst = id
+						st.FilterInst = id
 					}
 				})
 			}
 		})
 
-		if j.week.ShowConfig {
-			a.renderWeekSettings(c, p, errs)
+		if st.ShowConfig {
+			ui.Scroll(c).Grow(1).FillWidth().Children(func() { a.renderModuleConfig(c, p) })
 			return
 		}
 		if len(instances) == 0 {
-			ui.Text(c, "Keine Jira-Instanz für die Woche – unter ⚙️ auswählen oder anlegen.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "Keine Jira-Instanz für diese Woche – unter ⚙️ auswählen.").FontSize(12).TextColor(t.TextMuted)
 			return
 		}
 
@@ -385,19 +405,6 @@ func (a *App) renderWeekCard(c *ui.Context, cd weekCard, field int) {
 			}
 			ui.Text(c, when).FontSize(9.5).TextColor(t.TextMuted).SingleLine()
 		})
-	})
-}
-
-// renderWeekSettings picks the instances of the week board and, per instance, its JQL.
-func (a *App) renderWeekSettings(c *ui.Context, p *PanelSpec, errs map[string]string) {
-	a.renderModuleInstances(c, p, errs, moduleInstanceSettings{
-		key:         "wk",
-		intro:       "Welche Instanzen die Woche zeigt, und je Instanz welche Tickets – als JQL ohne Datum, OmaMac grenzt auf die Woche ein. Leer = „" + defaultWeekJQL + "“.",
-		off:         func(i *JiraInstanceConfig) *bool { return &i.WeekOff },
-		text:        func(i *JiraInstanceConfig) *string { return &i.WeekJQL },
-		placeholder: defaultWeekJQL,
-		saved:       "Wochen-JQL gespeichert",
-		reload:      func() { a.reloadWeek(p) },
 	})
 }
 

@@ -51,14 +51,14 @@ func TestParseActivityFeed(t *testing.T) {
 }
 
 func TestActivityURL(t *testing.T) {
-	u := activityURL(JiraInstanceConfig{BaseURL: "https://acme.atlassian.net/", Email: "me@example.com", ActivityProjects: "abc, xyz"}, 40, []string{"ABC-1", "XYZ-2"})
+	u := activityURL(JiraInstanceConfig{BaseURL: "https://acme.atlassian.net/", Email: "me@example.com"}, "abc, xyz", 40, []string{"ABC-1", "XYZ-2"})
 	for _, want := range []string{"https://acme.atlassian.net/activity?", "maxResults=40", "providers=issues", "os_authType=basic", "streams=key+IS+ABC+XYZ", "streams=issue-key+IS+ABC-1+XYZ-2"} {
 		if !strings.Contains(u, want) {
 			t.Fatalf("%s lacks %s", u, want)
 		}
 	}
 	// Data Center with a PAT: no forced Basic auth, no filter without projects.
-	if u := activityURL(JiraInstanceConfig{BaseURL: "https://jira.example.com"}, 10, nil); strings.Contains(u, "os_authType") || strings.Contains(u, "streams") {
+	if u := activityURL(JiraInstanceConfig{BaseURL: "https://jira.example.com"}, "", 10, nil); strings.Contains(u, "os_authType") || strings.Contains(u, "streams") {
 		t.Fatal(u)
 	}
 }
@@ -105,24 +105,69 @@ func TestBuiltinJiraBoardsStartOff(t *testing.T) {
 	}
 }
 
-// Each module can leave out an instance; off in Jira Quick-Access means off everywhere.
-func TestModuleInstances(t *testing.T) {
+// A module panel picks its instances and filters in its own config; off in the
+// instance list means off for every module.
+func TestModulePanelSources(t *testing.T) {
 	j := NewJiraModuleState(t.TempDir())
 	j.Instances = []JiraInstanceConfig{
 		{ID: "a", BaseURL: "https://a.example.com", APIToken: "x", Enabled: true},
-		{ID: "b", BaseURL: "https://b.example.com", APIToken: "x", Enabled: true, WeekOff: true},
+		{ID: "b", BaseURL: "https://b.example.com", APIToken: "x", Enabled: true},
 		{ID: "c", BaseURL: "https://c.example.com", APIToken: "x", Enabled: false},
 	}
-	ids := func(l []JiraInstanceConfig) (s string) {
-		for _, i := range l {
-			s += i.ID
+	describe := func(p *PanelSpec) (s string) {
+		for _, src := range j.sourcesFor(p) {
+			s += src.ID + "=" + src.Filter + ";"
 		}
 		return
 	}
-	if got := ids(j.activeInstances(weekOff)); got != "a" {
-		t.Fatalf("week = %q", got)
+	if got := describe(&PanelSpec{}); got != "a=;b=;" {
+		t.Fatalf("no config: %q", got)
 	}
-	if got := ids(j.activeInstances(activityOff)); got != "ab" {
-		t.Fatalf("activity = %q", got)
+	p := &PanelSpec{Config: &ModuleConfig{Sources: []JiraSource{{Instance: "a", Off: true}, {Instance: "b", Filter: " project = X "}, {Instance: "c"}}}}
+	if got := describe(p); got != "b=project = X;" {
+		t.Fatalf("config: %q", got)
+	}
+	if weekField(p) != weekByUpdated || activityScope(p) != activityMine {
+		t.Fatal("defaults")
+	}
+	p.Config.DateField, p.Config.Scope = "due", "all"
+	if weekField(p) != weekByDue || activityScope(p) != activityAll {
+		t.Fatal("stored choices")
+	}
+}
+
+// Copies of a module can be deleted, the delivered modules cannot; the config survives a save.
+func TestModulePanelCopies(t *testing.T) {
+	dir := t.TempDir()
+	var week *PanelSpec
+	for _, b := range BuiltinSystemPanels() {
+		if b.BuiltinKind == BuiltinJiraWeek {
+			week = b
+		}
+	}
+	if week.Deletable() || !week.Configurable() {
+		t.Fatal("delivered week board")
+	}
+	cp := *week
+	cp.ID = week.ID + "-2"
+	cp.Config = &ModuleConfig{DateField: "resolved", Sources: []JiraSource{{Instance: "a", Filter: "project = X"}}}
+	if !cp.Deletable() {
+		t.Fatal("copy should be deletable")
+	}
+	if err := SavePanel(dir, &cp); err != nil {
+		t.Fatal(err)
+	}
+	panels, err := LoadPanels(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *PanelSpec
+	for _, p := range panels {
+		if p.ID == cp.ID {
+			got = p
+		}
+	}
+	if got == nil || got.Config == nil || got.Config.source("a").Filter != "project = X" || weekField(got) != weekByResolved {
+		t.Fatalf("loaded copy: %+v", got)
 	}
 }

@@ -10,13 +10,18 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// renderTabSettings groups the settings in three sections (AI, vault, general).
+// renderTabSettings groups the settings in sections (AI, Jira instances, vault, general).
 // Every change is saved as it is made; the shortcut takes effect with Enter.
 func (a *App) renderTabSettings(c *ui.Context) {
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(860).Padding(20).Gap(16).Children(func() {
 			pageHeader(c, "Einstellungen", "", nil)
 			a.renderAISettings(c)
+			if a.Jira != nil {
+				section(c, "cfg-jira", "Jira-Instanzen",
+					"Zugänge für alle Jira-Module und für $JIRA_<NAME>_* in eigenen Panels. Ausgeschaltet fehlt eine Instanz überall; was ein einzelnes Modul zeigt, steht in dessen Konfiguration.",
+					func() { a.renderJiraInstanceEditor(c, "cfg-jira") })
+			}
 			a.renderVaultSettings(c)
 			a.renderGeneralSettings(c)
 		})

@@ -88,6 +88,7 @@ type PanelSpec struct {
 	LastUpdated    string        `json:"last_updated,omitempty"`
 	LastCommandOut string        `json:"last_command_out,omitempty"`
 	LastCheckMsg   string        `json:"last_check_msg,omitempty"` // Output from omamac-check (owl-check equivalent)
+	Config         *ModuleConfig `json:"config,omitempty"`         // settings of a built-in module (module_config.go)
 }
 
 // DynamicCommandOutput allows a panel's shell Command to return JSON that dynamically overrides

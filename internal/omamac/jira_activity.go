@@ -45,8 +45,7 @@ type activityState struct {
 	Entries    []JiraActivity
 	Errors     map[string]string // instance ID → error
 	LastSync   string
-	ViewMode   int    // 0 = stream, 1 = filter settings
-	Scope      int    // activityMine or activityAll
+	ViewMode   int    // 0 = stream, 1 = settings
 	FilterInst string // "" = all instances
 	Search     string
 }
@@ -65,29 +64,52 @@ const myActivityJQL = "(assignee = currentUser() OR reporter = currentUser() OR 
 // activityHTTP has more patience than the JQL client: big sites answer the stream slowly.
 var activityHTTP = &http.Client{Timeout: 25 * time.Second}
 
-// RefreshActivityPanel loads the activity stream of every enabled instance and fills the panel's summary.
+// actState is the runtime state of one Jira Activity panel.
+func (j *JiraModuleState) actState(panelID string) *activityState {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.acts == nil {
+		j.acts = map[string]*activityState{}
+	}
+	st := j.acts[panelID]
+	if st == nil {
+		st = &activityState{}
+		j.acts[panelID] = st
+	}
+	return st
+}
+
+// resetActivity drops a panel's entries after its settings changed, so no stale stream shows.
+func (j *JiraModuleState) resetActivity(panelID string) {
+	st := j.actState(panelID)
+	j.mu.Lock()
+	st.Entries, st.LastSync = nil, ""
+	j.mu.Unlock()
+}
+
+// RefreshActivityPanel loads the activity stream of the panel's instances and fills its summary.
 func (j *JiraModuleState) RefreshActivityPanel(ctx context.Context, p *PanelSpec) {
-	j.mu.RLock()
-	scope := j.act.Scope
-	j.mu.RUnlock()
+	st := j.actState(p.ID)
+	scope := activityScope(p)
 	type res struct {
 		inst    JiraInstanceConfig
 		entries []JiraActivity
 		err     error
 	}
 	// Instances on the same site with the same filter ask once (e.g. two JQL views of one site).
-	var targets []JiraInstanceConfig
+	var targets []panelSource
 	seen := map[string]bool{}
-	for _, inst := range j.activeInstances(activityOff) {
-		k := strings.TrimRight(inst.BaseURL, "/") + "|" + normalizeProjectKeys(inst.ActivityProjects)
+	for _, src := range j.sourcesFor(p) {
+		k := strings.TrimRight(src.BaseURL, "/") + "|" + normalizeProjectKeys(src.Filter)
 		if !seen[k] {
 			seen[k] = true
-			targets = append(targets, inst)
+			targets = append(targets, src)
 		}
 	}
 	ch := make(chan res, len(targets))
-	for _, inst := range targets {
-		go func(inst JiraInstanceConfig) {
+	for _, src := range targets {
+		go func(src panelSource) {
+			inst := src.JiraInstanceConfig
 			var keys []string
 			if scope == activityMine {
 				found, err := j.searchJQL(ctx, inst, myActivityJQL, 60)
@@ -99,9 +121,9 @@ func (j *JiraModuleState) RefreshActivityPanel(ctx context.Context, p *PanelSpec
 					keys = append(keys, f.Key)
 				}
 			}
-			e, err := fetchActivity(ctx, inst, activityPerInstance, keys)
+			e, err := fetchActivity(ctx, inst, src.Filter, activityPerInstance, keys)
 			ch <- res{inst, e, err}
-		}(inst)
+		}(src)
 	}
 	var all []JiraActivity
 	errs := map[string]string{}
@@ -122,20 +144,12 @@ func (j *JiraModuleState) RefreshActivityPanel(ctx context.Context, p *PanelSpec
 	sort.SliceStable(all, func(a, b int) bool { return all[a].When.After(all[b].When) })
 
 	j.mu.Lock()
-	j.act.Entries = all
-	j.act.Errors = errs
-	j.act.LastSync = time.Now().Format("15:04:05")
+	st.Entries = all
+	st.Errors = errs
+	st.LastSync = time.Now().Format("15:04:05")
 	j.mu.Unlock()
 
 	syncActivityPanel(p, all, len(targets), len(errs))
-}
-
-// SetActivityScope switches between my tickets and the whole site.
-func (j *JiraModuleState) setActivityScope(scope int) {
-	j.mu.Lock()
-	j.act.Scope = scope
-	j.act.Entries, j.act.LastSync = nil, ""
-	j.mu.Unlock()
 }
 
 func syncActivityPanel(p *PanelSpec, all []JiraActivity, asked, failed int) {
@@ -179,22 +193,18 @@ func syncActivityPanel(p *PanelSpec, all []JiraActivity, asked, failed int) {
 	p.Rows = rows
 }
 
-// activeInstances are the enabled instances that have a URL and a token, without
-// those a module leaves out (skip reports that, e.g. ActivityOff).
-func (j *JiraModuleState) activeInstances(skip func(JiraInstanceConfig) bool) []JiraInstanceConfig {
+// activeInstances are the enabled instances that have a URL and a token.
+func (j *JiraModuleState) activeInstances() []JiraInstanceConfig {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	var out []JiraInstanceConfig
 	for _, inst := range j.Instances {
-		if inst.Enabled && strings.TrimSpace(inst.BaseURL) != "" && strings.TrimSpace(inst.APIToken) != "" && (skip == nil || !skip(inst)) {
+		if inst.Enabled && strings.TrimSpace(inst.BaseURL) != "" && strings.TrimSpace(inst.APIToken) != "" {
 			out = append(out, inst)
 		}
 	}
 	return out
 }
-
-func activityOff(i JiraInstanceConfig) bool { return i.ActivityOff }
-func weekOff(i JiraInstanceConfig) bool     { return i.WeekOff }
 
 // normalizeProjectKeys turns "abc, XYZ;def" into "ABC XYZ DEF".
 func normalizeProjectKeys(s string) string {
@@ -204,15 +214,15 @@ func normalizeProjectKeys(s string) string {
 
 // activityURL is the Atom feed of the Activity Streams plugin, which Jira Cloud still serves
 // (/activity) and Data Center has always had; providers=issues leaves out Confluence.
-// With keys, only those tickets' activity.
-func activityURL(inst JiraInstanceConfig, max int, keys []string) string {
+// projects limits it to those project keys, keys to those tickets.
+func activityURL(inst JiraInstanceConfig, projects string, max int, keys []string) string {
 	q := url.Values{}
 	q.Set("maxResults", fmt.Sprint(max))
 	q.Set("providers", "issues")
 	if inst.Email != "" {
 		q.Set("os_authType", "basic")
 	}
-	if projects := normalizeProjectKeys(inst.ActivityProjects); projects != "" {
+	if projects := normalizeProjectKeys(projects); projects != "" {
 		q.Add("streams", "key IS "+projects)
 	}
 	if len(keys) > 0 {
@@ -221,8 +231,8 @@ func activityURL(inst JiraInstanceConfig, max int, keys []string) string {
 	return strings.TrimRight(strings.TrimSpace(inst.BaseURL), "/") + "/activity?" + q.Encode()
 }
 
-func fetchActivity(ctx context.Context, inst JiraInstanceConfig, max int, keys []string) ([]JiraActivity, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, activityURL(inst, max, keys), nil)
+func fetchActivity(ctx context.Context, inst JiraInstanceConfig, projects string, max int, keys []string) ([]JiraActivity, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, activityURL(inst, projects, max, keys), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -322,13 +332,13 @@ func parseActivityFeed(body []byte, inst JiraInstanceConfig) ([]JiraActivity, er
 }
 
 // filteredActivity applies the instance pill and the search field.
-func (j *JiraModuleState) filteredActivity() []JiraActivity {
+func (j *JiraModuleState) filteredActivity(st *activityState) []JiraActivity {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	q := strings.ToLower(strings.TrimSpace(j.act.Search))
+	q := strings.ToLower(strings.TrimSpace(st.Search))
 	var out []JiraActivity
-	for _, e := range j.act.Entries {
-		if j.act.FilterInst != "" && e.InstanceID != j.act.FilterInst {
+	for _, e := range st.Entries {
+		if st.FilterInst != "" && e.InstanceID != st.FilterInst {
 			continue
 		}
 		if q != "" && !strings.Contains(strings.ToLower(e.Author+" "+e.Action+" "+e.IssueTitle+" "+e.Detail+" "+e.InstanceName), q) {
@@ -365,20 +375,21 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 		return
 	}
 	sBg, sFg := statusColors(t, p.Status)
-	entries := j.filteredActivity()
+	st := j.actState(p.ID)
+	entries := j.filteredActivity(st)
 	j.mu.RLock()
-	total := len(j.act.Entries)
+	total := len(st.Entries)
 	perInst := map[string]int{}
-	for _, e := range j.act.Entries {
+	for _, e := range st.Entries {
 		perInst[e.InstanceID]++
 	}
 	errs := map[string]string{}
-	for k, v := range j.act.Errors {
+	for k, v := range st.Errors {
 		errs[k] = v
 	}
-	lastSync := j.act.LastSync
+	lastSync := st.LastSync
 	j.mu.RUnlock()
-	instances := j.activeInstances(activityOff)
+	sources := j.sourcesFor(p)
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
@@ -391,8 +402,8 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 		})
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			instancePill(c, "act-inst-all", fmt.Sprintf("Alle Instanzen (%d)", total), j.act.FilterInst == "", func() { j.act.FilterInst = "" })
-			for _, inst := range instances {
+			instancePill(c, "act-inst-all", fmt.Sprintf("Alle Instanzen (%d)", total), st.FilterInst == "", func() { st.FilterInst = "" })
+			for _, inst := range sources {
 				id := inst.ID
 				n, has := perInst[id]
 				_, failed := errs[id]
@@ -403,11 +414,11 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 				if failed {
 					lbl = inst.Name + " (⚠)"
 				}
-				instancePill(c, "act-inst-"+id, lbl, j.act.FilterInst == id, func() {
-					if j.act.FilterInst == id {
-						j.act.FilterInst = ""
+				instancePill(c, "act-inst-"+id, lbl, st.FilterInst == id, func() {
+					if st.FilterInst == id {
+						st.FilterInst = ""
 					} else {
-						j.act.FilterInst = id
+						st.FilterInst = id
 					}
 				})
 			}
@@ -415,26 +426,28 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 			if lastSync != "" {
 				ui.Text(c, "Stand "+lastSync).FontSize(10.5).TextColor(t.TextMuted)
 			}
-			scope := j.act.Scope
+			scope := activityScope(p)
 			if ui.Segmented(c.Key("act-scope"), &scope, "Meine Tickets", "Alle").
 				Tooltip("Meine Tickets: zugewiesen, gemeldet oder beobachtet und in den letzten 14 Tagen geändert").Changed() {
-				j.setActivityScope(scope)
+				p.moduleConfig().Scope = activityScopes[scope]
+				a.saveModuleConfig(p)
+				j.resetActivity(p.ID)
 				a.refreshPanelAsync(p, "")
 			}
-			ui.Segmented(c.Key("act-mode"), &j.act.ViewMode, "📰", "⚙️")
+			ui.Segmented(c.Key("act-mode"), &st.ViewMode, "📰", "⚙️")
 		})
 
-		if j.act.ViewMode == 1 {
-			a.renderActivitySettings(c, p, errs)
+		if st.ViewMode == 1 {
+			ui.Scroll(c).Grow(1).FillWidth().Children(func() { a.renderModuleConfig(c, p) })
 			return
 		}
 
-		ui.TextInput(c.Key("act-search"), &j.act.Search).Placeholder("Filtern nach Person, Ticket, Text …").FillWidth()
+		ui.TextInput(c.Key("act-search"), &st.Search).Placeholder("Filtern nach Person, Ticket, Text …").FillWidth()
 
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				if len(instances) == 0 {
-					ui.Text(c, "Keine Jira-Instanz für den Stream – unter ⚙️ auswählen oder anlegen.").FontSize(12).TextColor(t.TextMuted)
+				if len(sources) == 0 {
+					ui.Text(c, "Keine Jira-Instanz für diesen Stream – unter ⚙️ auswählen.").FontSize(12).TextColor(t.TextMuted)
 				} else if len(entries) == 0 {
 					msg := "Keine Aktivität für diesen Filter."
 					if lastSync == "" {
@@ -474,19 +487,6 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 				}
 			})
 		})
-	})
-}
-
-// renderActivitySettings picks the instances of the stream and, per instance, its projects.
-func (a *App) renderActivitySettings(c *ui.Context, p *PanelSpec, errs map[string]string) {
-	a.renderModuleInstances(c, p, errs, moduleInstanceSettings{
-		key:         "act",
-		intro:       "Welche Instanzen der Stream zeigt, und je Instanz welche Projekte (durch Komma getrennt, z. B. „ABC, XYZ“; leer = alle Projekte der Site).",
-		off:         func(i *JiraInstanceConfig) *bool { return &i.ActivityOff },
-		text:        func(i *JiraInstanceConfig) *string { return &i.ActivityProjects },
-		placeholder: "alle Projekte",
-		saved:       "Activity-Filter gespeichert",
-		reload:      func() { a.refreshPanelAsync(p, "") },
 	})
 }
 

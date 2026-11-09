@@ -167,7 +167,7 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 
 		a.renderPanelRefine(c, sel)
 
-		if !sel.IsBuiltin {
+		if sel.Deletable() {
 			ui.Row(c).FillWidth().Children(func() {
 				ui.Spacer(c)
 				del := ui.ButtonBase(c.Key("detail-delete-"+sel.ID)).Cursor(ui.CursorPointer).Padding(2, 4)
@@ -189,6 +189,18 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 // renderPanelRefine changes the chosen panel with one sentence to the AI.
 func (a *App) renderPanelRefine(c *ui.Context, sel *PanelSpec) {
 	t := c.Theme()
+	if sel.Configurable() {
+		ui.Column(c.Key("module-cfg")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Background(t.Surface).Gap(8).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "Konfiguration").FontSize(13).Bold().Grow(1)
+				if ui.Button(c.Key("module-dup"), "Duplizieren").Tooltip("Ein weiteres Panel dieses Moduls mit eigenen Einstellungen").Clicked() {
+					a.duplicatePanel(sel)
+				}
+			})
+			a.renderModuleConfig(c, sel)
+		})
+		return
+	}
 	if sel.IsBuiltin {
 		ui.Text(c, "System-Modul: wird mit OmaMac geliefert und lässt sich nicht per KI ändern.").
 			FontSize(11.5).TextColor(t.TextMuted)
@@ -255,7 +267,16 @@ func (a *App) panelMenuItems(m *ui.Menu, p *PanelSpec) {
 	if !p.IsBuiltin && m.Item("Teilen …").Chosen() {
 		a.openExport([]*PanelSpec{p})
 	}
+	if p.Configurable() && m.Item("Duplizieren").Chosen() {
+		a.duplicatePanel(p)
+	}
 	if p.IsBuiltin {
+		if p.Deletable() {
+			m.Separator()
+			if m.Item("Löschen …").Shortcut(ui.Cmd, ui.KeyBackspace).Chosen() {
+				a.askDeletePanel(p)
+			}
+		}
 		return
 	}
 	label := "Als HTML-Ansicht darstellen"
@@ -271,9 +292,9 @@ func (a *App) panelMenuItems(m *ui.Menu, p *PanelSpec) {
 	}
 }
 
-// askDeletePanel asks before deleting p; system modules cannot be deleted.
+// askDeletePanel asks before deleting p; the delivered system modules cannot be deleted.
 func (a *App) askDeletePanel(p *PanelSpec) {
-	if p == nil || p.IsBuiltin {
+	if p == nil || !p.Deletable() {
 		return
 	}
 	a.confirmDeleteID = p.ID
@@ -308,7 +329,7 @@ func (a *App) togglePanelType(p *PanelSpec) {
 
 func (a *App) deletePanel(id string) {
 	p := a.findPanel(id)
-	if p == nil || p.IsBuiltin {
+	if p == nil || !p.Deletable() {
 		return
 	}
 	_ = DeletePanel(a.Config.PanelsDir, id)
