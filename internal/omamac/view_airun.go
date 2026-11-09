@@ -387,23 +387,47 @@ func (a *App) renderAIRunSteps(c *ui.Context, v aiRunView) {
 // indented and folded away below the formatted result.
 func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
 	t := c.Theme()
-	code := func(text string) {
-		ui.Column(c).FillWidth().Padding(10, 12).Radius(8).Border(1, t.Border).Background(t.Background).Children(func() {
-			ui.Text(c, text).Font("monospace").FontSize(11).FillWidth().Selectable()
+	answer := func() { a.renderJSONAnswer(c, "ai-answer", v.output, a.Config.AIOutputRaw) }
+	header := func(label string) {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(11.5).Bold().TextColor(t.TextMuted).Grow(1)
+			a.renderOutputViewSwitch(c, v.output)
 		})
 	}
 	switch {
 	case !v.done && v.output == "":
 		ui.Text(c, "Warte auf die erste Ausgabe der KI …").FontSize(12).TextColor(t.TextMuted)
 	case !v.done:
-		ui.Text(c, "Antwort der KI (live)").FontSize(11.5).Bold().TextColor(t.TextMuted)
-		code(formatJSONStream(v.output, true))
+		header("Antwort der KI (live)")
+		answer()
 	case v.output == "":
 	case v.result != nil:
-		ui.Collapsible(c, "Antwort der KI", &a.aiRunShowRaw, func() { code(formatJSONStream(v.output, true)) })
+		ui.Collapsible(c, "Antwort der KI", &a.aiRunShowRaw, func() {
+			ui.Row(c).FillWidth().Children(func() {
+				ui.Spacer(c)
+				a.renderOutputViewSwitch(c, v.output)
+			})
+			answer()
+		})
 	default:
-		ui.Text(c, "Antwort der KI").FontSize(11.5).Bold().TextColor(t.TextMuted)
-		code(formatJSONStream(v.output, true))
+		header("Antwort der KI")
+		answer()
+	}
+}
+
+// renderOutputViewSwitch switches the AI's answer between tables ("Aufbereitet")
+// and indented JSON; the choice is kept in the settings.
+func (a *App) renderOutputViewSwitch(c *ui.Context, output string) {
+	if !isJSONText(output) {
+		return
+	}
+	idx := 0
+	if a.Config.AIOutputRaw {
+		idx = 1
+	}
+	if ui.Segmented(c.Key("ai-out-view"), &idx, "Aufbereitet", "JSON").Changed() {
+		a.Config.AIOutputRaw = idx == 1
+		_ = SaveConfig(a.ConfigPath, a.Config)
 	}
 }
 
@@ -456,7 +480,7 @@ func (a *App) renderAIResultPanel(c *ui.Context, key string, p aiResultPanel) {
 				}
 			})
 			if p.firstOutput != "" {
-				code(formatJSONStream(p.firstOutput, true))
+				a.renderJSONAnswer(c, key+"-first", p.firstOutput, a.Config.AIOutputRaw)
 			}
 		}
 		if len(p.actions) > 0 {

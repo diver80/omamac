@@ -275,6 +275,17 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.aiRun.ended = app.aiRun.started.Add(7 * time.Second)
 	app.aiRun.setResult("erstellt", []*PanelSpec{done}, nil)
 	savePNG("09-ki-ergebnis.png", app.RenderStudioView, 1320, 900)
+
+	// The answer itself, parsed into tables
+	app.aiRun.output.Reset()
+	app.aiRun.output.WriteString(`[{"id":"mydealz-3d","title":"3D-Drucker-Deals","icon":"🖨","subtitle":"mydealz · Idealo-Zielpreis","type":"native","status":"ok","badge_text":"4 Deals","refresh_seconds":300,` +
+		`"metrics":[{"label":"Deals","value":"4","unit":"heute","status":"ok","progress":40},{"label":"Bestpreis","value":"299 €","unit":"Bambu A1","status":"ok","progress":60}],` +
+		`"rows":[{"left":"Bambu Lab A1","right":"299 €","badge":"HOT","status":"ok","url":"https://www.mydealz.de/deals/a1"},{"left":"Prusa MK4S","right":"749 €","badge":"DEAL","status":"warn","url":"https://www.mydealz.de/deals/mk4s"}],` +
+		`"actions":[{"label":"mydealz öffnen","command":"open https://www.mydealz.de/gruppe/3d-drucker","style":"primary"}],` +
+		`"command":"python3 - <<'PY'\nimport json, os, urllib.request\nprint(json.dumps(out))\nPY"}]`)
+	app.aiRun.result = nil
+	app.aiRun.errText = ""
+	savePNG("11-ki-antwort-tabellen.png", app.RenderStudioView, 1320, 1000)
 	app.busy, app.showAIRun, app.aiRun = false, false, nil
 
 	if sel := app.findPanel("04-mydealz-3d"); sel != nil {
@@ -627,5 +638,31 @@ func TestMenuBarText(t *testing.T) {
 	p.MenuBarText, p.Status = "Helvetia", "crit"
 	if got := p.TrayLabel(); got != "🔴 🛡️ Helvetia" {
 		t.Fatalf("fixed, critical = %q", got)
+	}
+}
+
+// The parser takes the AI's answer at any point while it streams in: every
+// prefix parses without panicking, and the complete text yields the full value.
+func TestParsePartialJSON(t *testing.T) {
+	full := "Hier:\n```json\n" + `[{"title":"A \"B\"","icon":"🛡","n":3,"rows":[{"left":"x","status":"ok"}],"command":"echo 1\necho 2"}]` + "\n```"
+	for i := 0; i <= len(full); i++ {
+		parsePartialJSON(full[:i])
+	}
+	n, before, after := parsePartialJSON(full)
+	if n == nil || n.kind != jArray || !n.complete || len(n.vals) != 1 {
+		t.Fatalf("node = %+v", n)
+	}
+	p := n.vals[0]
+	if p.field("title").text != `A "B"` || p.field("icon").text != "🛡" || p.field("n").text != "3" ||
+		p.field("command").text != "echo 1\necho 2" || p.field("rows").vals[0].field("status").text != "ok" {
+		t.Fatalf("fields = %+v", p)
+	}
+	if !strings.Contains(before, "```json") || strings.TrimSpace(after) != "```" {
+		t.Fatalf("before=%q after=%q", before, after)
+	}
+	// mid-stream: the open string shows what has arrived
+	part, _, _ := parsePartialJSON(`{"title":"Audit","command":"python3 - <<'PY'\nimport os`)
+	if part.complete || part.field("command").text != "python3 - <<'PY'\nimport os" {
+		t.Fatalf("partial = %+v", part)
 	}
 }

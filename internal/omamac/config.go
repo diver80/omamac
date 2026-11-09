@@ -56,6 +56,8 @@ type Config struct {
 
 	// AIRunView is what the dialog shows while the AI works: AIRunViewLog or AIRunViewProgress.
 	AIRunView string `json:"ai_run_view,omitempty"`
+	// AIOutputRaw shows the AI's answer as indented JSON instead of tables.
+	AIOutputRaw bool `json:"ai_output_raw,omitempty"`
 }
 
 const (

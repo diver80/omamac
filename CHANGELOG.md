@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2
+
+- **Antwort der KI aufbereitet:** Statt JSON zeigt das KI-Fenster jedes Panel als Karte – Felder als Tabelle, `metrics`, `rows` und `actions` als Tabellen mit Spalten, Status als farbige Markierung, Befehle und HTML als Codeblock. Das funktioniert schon live, während die KI schreibt. Der Umschalter „Aufbereitet | JSON“ wechselt auf die eingerückte Rohfassung; die Wahl bleibt gespeichert. Auch die Ausgabe des ersten Datenabrufs wird so dargestellt.
+
 ## 1.5.1
 
 - **Panels umbenennen:** „Umbenennen …“ im ⋯- und Rechtsklick-Menü oder ✎ beim gewählten Panel ändert Name, Symbol und den Text in der Menüleiste – auch bei den System-Modulen. Leer bleibt der Menüleisten-Text automatisch (vom Skript); `{status}` fügt den Wert des Skripts in den eigenen Text ein, z. B. „Helvetia {status}“. Eine Vorschau zeigt das Ergebnis; ein KI-Anpassen behält den eigenen Text.
