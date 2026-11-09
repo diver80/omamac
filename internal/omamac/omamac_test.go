@@ -295,6 +295,18 @@ func TestGenerateScreenshots(t *testing.T) {
 		app.showRename = false
 	}
 
+	if sel := app.findPanel("04-mydealz-3d"); sel != nil {
+		app.openExport([]*PanelSpec{sel})
+		savePNG("12-teilen.png", app.RenderStudioView, 1320, 820)
+		app.showExport = false
+		if b, err := BuildShareBundle([]*PanelSpec{sel}, nil, nil, true, "1.6.0"); err == nil {
+			app.openImportData(b.Marshal(), "mydealz-3d-drucker-idealo-radar.omamac")
+			app.importShowCmd[0] = true
+			savePNG("13-importieren.png", app.RenderStudioView, 1320, 900)
+			app.showImport = false
+		}
+	}
+
 	app.activeTab = TabStore
 	savePNG("03-vorlagen.png", app.RenderStudioView, 1320, 760)
 
@@ -664,5 +676,81 @@ func TestParsePartialJSON(t *testing.T) {
 	part, _, _ := parsePartialJSON(`{"title":"Audit","command":"python3 - <<'PY'\nimport os`)
 	if part.complete || part.field("command").text != "python3 - <<'PY'\nimport os" {
 		t.Fatalf("partial = %+v", part)
+	}
+}
+
+// Exported panels carry no live data and no secret; a secret in plain text blocks the export.
+func TestShareExportImport(t *testing.T) {
+	p := &PanelSpec{ID: "audit", Title: "Audit", Icon: "🛡️", Type: PanelTypeNative, Enabled: true, RefreshSeconds: 600,
+		Command:        `curl -u "$JIRA_KUNDE_A_EMAIL:$JIRA_KUNDE_A_API_TOKEN" https://kunde-a.atlassian.net/rest/api/3/auditing/record`,
+		LastCommandOut: `{"rows":[{"left":"geheimer Fehler"}]}`, Rows: []PanelRow{{Left: "geheimer Fehler"}}, BadgeText: "3 Fehler",
+		PromptHistory: []PromptStep{{Step: 1, Prompt: "Überwache das Audit-Log", Model: "Claude CLI"}}}
+	env := []string{"JIRA_KUNDE_A_API_TOKEN=tok-secret-123456", "JIRA_KUNDE_A_EMAIL=me@example.com", "IDEALO_TARGET_PRICE=499"}
+
+	chk := CheckForSharing(p, env, true)
+	if chk.Blocked() || strings.Join(chk.VarUsed, ",") != "JIRA_KUNDE_A_API_TOKEN,JIRA_KUNDE_A_EMAIL" || len(chk.Hosts) != 1 || chk.Hosts[0] != "kunde-a.atlassian.net" {
+		t.Fatalf("check = %+v", chk)
+	}
+	b, err := BuildShareBundle([]*PanelSpec{p}, env, []CredentialMeta{{Name: "JIRA_KUNDE_A_API_TOKEN", Description: "Token"}}, false, "1.6.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := string(b.Marshal())
+	for _, bad := range []string{"geheimer Fehler", "tok-secret", "3 Fehler", "Überwache", `"enabled": true`} {
+		if strings.Contains(data, bad) {
+			t.Fatalf("export contains %q:\n%s", bad, data)
+		}
+	}
+	if p.LastCommandOut == "" || len(p.Rows) != 1 {
+		t.Fatal("export must not change the panel itself")
+	}
+
+	// a token pasted into the command, or a vault value, blocks the export
+	leaky := *p
+	leaky.Command = `curl -u me:tok-secret-123456 https://x`
+	if chk := CheckForSharing(&leaky, env, false); len(chk.Leaks) != 1 || chk.Leaks[0] != "JIRA_KUNDE_A_API_TOKEN" {
+		t.Fatalf("leak not found: %+v", chk)
+	}
+	leaky.Command = "echo sk-ant-api03-abcdefghijklmnopqrstuvwxyz"
+	if _, err := BuildShareBundle([]*PanelSpec{&leaky}, env, nil, false, ""); err == nil {
+		t.Fatal("a token in the command must block the export")
+	}
+
+	// import: the same file, panels switched off
+	got, err := ParseShareBundle([]byte(data))
+	if err != nil || len(got.Panels) != 1 || got.Panels[0].Enabled || got.Panels[0].Command != p.Command || len(got.Variables) != 2 || got.Variables[1].Description != "" || got.Variables[0].Description != "Token" {
+		t.Fatalf("import = %+v, err %v", got, err)
+	}
+	// the JSON the AI writes imports too
+	bare, err := ParseShareBundle([]byte("```json\n[{\"title\":\"Ping\",\"command\":\"echo $MY_HOST; python3 -c 'import os; os.environ.get(\\\"MY_KEY\\\", \\\"x\\\"); os.getenv(\\\"MY_TOKEN\\\")'\",\"enabled\":true}]\n```"))
+	if err != nil || len(bare.Panels) != 1 || bare.Panels[0].Enabled || len(bare.Variables) != 3 || bare.Variables[0].Name != "MY_HOST" || bare.Variables[1].Name != "MY_KEY" {
+		t.Fatalf("bare = %+v, err %v", bare, err)
+	}
+	if _, err := ParseShareBundle([]byte("kein json")); err == nil {
+		t.Fatal("text without a panel must be refused")
+	}
+}
+
+func TestImportPanelsGetFreeIDs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfg := DefaultConfig()
+	cfg.PanelsDir = filepath.Join(tmp, "panels")
+	_ = SaveConfig(cfgPath, cfg)
+	app, err := NewApp(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := app.panels[len(app.panels)-1]
+	before := len(app.panels)
+	app.importSource = "test.omamac"
+	app.importPanels(&ShareBundle{Panels: []*PanelSpec{{ID: existing.ID, Title: "Kopie", Enabled: true}}})
+	if len(app.panels) != before+1 {
+		t.Fatalf("panels = %d", len(app.panels))
+	}
+	imp := app.panels[len(app.panels)-1]
+	if imp.ID == existing.ID || imp.Enabled || imp.PromptHistory[len(imp.PromptHistory)-1].Provider != "import" {
+		t.Fatalf("imported = %+v", imp)
 	}
 }

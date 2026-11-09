@@ -84,6 +84,16 @@ type App struct {
 	renameIcon  string
 	renameMenu  string
 
+	// Sharing panels (.omamac files and the clipboard)
+	showExport     bool
+	exportIDs      []string
+	exportHistory  bool
+	showImport     bool
+	importBundle   *ShareBundle
+	importSource   string
+	importShowCmd  map[int]bool
+	pendingImports []string // files opened before the window was there
+
 	confirmDeleteID string // panel whose deletion awaits confirmation
 	confirmDelete   bool
 
@@ -315,7 +325,20 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	hideOnClose(a.walWin)
 	if studioWin != nil {
 		hideOnClose(studioWin)
+		// a .omamac file dropped anywhere on the main window opens the import
+		studioWin.OnFileDrop(func(e *mygo.FileDropEvent) {
+			for _, path := range e.Paths {
+				if strings.EqualFold(filepath.Ext(path), "."+ShareFileExt) {
+					a.OpenImportFile(path)
+					return
+				}
+			}
+		})
 	}
+	for _, path := range a.pendingImports { // opened from Finder before the window existed
+		a.OpenImportFile(path)
+	}
+	a.pendingImports = nil
 
 	// 2. Register global hotkey (e.g. Alt+Space)
 	if a.Config.LauncherShortcut != "" {

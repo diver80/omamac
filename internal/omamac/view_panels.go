@@ -33,6 +33,16 @@ func (a *App) renderTabOverview(c *ui.Context) {
 						if m.Item("Alle jetzt aktualisieren").Chosen() {
 							a.refreshAllNow()
 						}
+						m.Separator()
+						if m.Item("Eigene Panels teilen …").Chosen() {
+							a.openExport(a.panels)
+						}
+						if m.Item("Panels importieren …").Chosen() {
+							a.pickImportFile()
+						}
+						if m.Item("Aus Zwischenablage importieren").Chosen() {
+							a.importFromClipboard()
+						}
 					})
 				})
 			a.renderPanelList(c, "ov", true)
@@ -45,6 +55,8 @@ func (a *App) renderTabOverview(c *ui.Context) {
 	}
 	a.renderDeleteConfirm(c)
 	a.renderRenameDialog(c)
+	a.renderExportDialog(c)
+	a.renderImportDialog(c)
 }
 
 // renderPanelList shows every panel in one line with its menu bar and widget
@@ -239,6 +251,9 @@ func (a *App) panelMenuItems(m *ui.Menu, p *PanelSpec) {
 	}
 	if m.Item("Umbenennen …").Chosen() {
 		a.openRename(p)
+	}
+	if !p.IsBuiltin && m.Item("Teilen …").Chosen() {
+		a.openExport([]*PanelSpec{p})
 	}
 	if p.IsBuiltin {
 		return

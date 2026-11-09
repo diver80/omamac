@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0
+
+- **Panels teilen:** „Teilen …“ im ⋯-/Rechtsklick-Menü eines Panels oder „Eigene Panels teilen …“ im ⋯-Menü der Übersicht. Als `.omamac`-Datei oder über die Zwischenablage (z. B. für den Chat). Live-Daten und Zugangswerte werden nie mitgegeben, nur die Namen der benötigten Variablen; der KI-Verlauf auf Wunsch. Der Dialog nennt die Adressen, mit denen ein Panel spricht. Steht ein Wert aus dem Tresor oder ein Token im Klartext im Panel, wird der Export verweigert.
+- **Panels importieren:** per ⋯ → „Panels importieren …“, Doppelklick auf eine `.omamac`-Datei, Ziehen aufs Fenster oder „Aus Zwischenablage importieren“ (auch Panel-JSON der KI). Die Vorschau zeigt jeden Befehl und welche Variablen hier fehlen. Importierte Panels kommen ausgeschaltet an – ihr Befehl läuft erst nach dem Einschalten.
+
 ## 1.5.3
 
 - Aufgeräumt: Beispieltexte ohne echte Namen; die Übernahme von Schlüsselbund-Einträgen aus der Zeit vor 1.2.1 entfällt.

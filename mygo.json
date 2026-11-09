@@ -2,10 +2,13 @@
   "name": "OmaMac",
   "slug": "omamac",
   "identifier": "de.diver80.omamac",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "copyright": "© 2026 Frank Hess",
   "main": "./cmd/omamac",
   "out": "build.noindex",
+  "fileAssociations": [
+    { "ext": ["omamac"], "name": "OmaMac-Panels", "mimeType": "application/x-omamac-panels", "role": "Viewer" }
+  ],
   "updates": {
     "publicKey": "e4nKXYntWG3/knE9y+kgvFyXU6Ei8oZJJkm2Nh0brDo=",
     "github": "diver80/omamac"

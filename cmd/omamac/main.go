@@ -43,6 +43,9 @@ func main() {
 		log.Fatalf("Failed to initialize OmaMac: %v", err)
 	}
 
+	// .omamac files opened from Finder (see fileAssociations in mygo.json) go to the import
+	mygo.App.OnOpenFile(func(path string) { appState.OpenImportFile(path) })
+
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},

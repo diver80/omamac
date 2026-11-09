@@ -10,6 +10,7 @@ The app's interface is in German.
 - **Create and change panels with a sentence:** "+ Neues Panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
 - **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
+- **Share panels:** Export one or all of your panels as a `.omamac` file or via the clipboard, without live data or secrets – only the names of the variables they need. Import shows each panel's command first and adds panels switched off. A panel holding a secret in plain text cannot be exported.
 - **Templates:** Add ready-made panels with a switch, or use one as the starting point for your own AI panel.
 - **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name. The Jira Quick-Access instances add `$JIRA_<NAME>_URL`, `_EMAIL` and `_API_TOKEN` automatically.
 - **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
