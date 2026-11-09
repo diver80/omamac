@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1
+
+- **Uhrzeiten in Ortszeit:** Die KI rechnet Zeitstempel aus APIs (meist UTC) beim Erstellen und Anpassen von Panels in die Ortszeit des Macs um, statt sie nur abzuschneiden. Bestehende Panels zeigen UTC weiter, bis sie per „Mit KI anpassen“ korrigiert werden.
+
 ## 1.6.0
 
 - **Panels teilen:** „Teilen …“ im ⋯-/Rechtsklick-Menü eines Panels oder „Eigene Panels teilen …“ im ⋯-Menü der Übersicht. Als `.omamac`-Datei oder über die Zwischenablage (z. B. für den Chat). Live-Daten und Zugangswerte werden nie mitgegeben, nur die Namen der benötigten Variablen; der KI-Verlauf auf Wunsch. Der Dialog nennt die Adressen, mit denen ein Panel spricht. Steht ein Wert aus dem Tresor oder ein Token im Klartext im Panel, wird der Export verweigert.

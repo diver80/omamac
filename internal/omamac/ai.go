@@ -466,7 +466,7 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
   }
 ]`, count, userPrompt, requestedType, vaultCatalog)
 
-	sysPrompt += imagePromptNote(len(images))
+	sysPrompt += timeZoneNote + imagePromptNote(len(images))
 	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	if err != nil {
@@ -535,7 +535,7 @@ REFINEMENT PROMPT (Prompt #2): %q
 Keep the same "id" (%q). If the user asks to switch between "native" and "html", update "type" and populate "metrics"/"rows" or "html" accordingly.
 Return ONLY the updated single JSON object (no markdown commentary outside JSON).`, string(currentJSON), vaultCatalog, refinePrompt, existing.ID)
 
-	sysPrompt += imagePromptNote(len(images))
+	sysPrompt += timeZoneNote + imagePromptNote(len(images))
 	rawResp, providerLabel, err := e.CompleteRequest(ctx, sysPrompt, images)
 	now := time.Now().Format("15:04:05")
 	stepNum := len(existing.PromptHistory) + 1
@@ -669,3 +669,8 @@ func truncateStr(s string, max int) string {
 	}
 	return s[:max] + "…"
 }
+
+// timeZoneNote: APIs answer in UTC, the user reads the panel in local time.
+const timeZoneNote = `
+
+TIMES: APIs usually return timestamps in UTC (e.g. "2026-11-09T10:05:00.000+0000" or "...Z"). Never display them by slicing the string – convert them to the Mac's local time first (Python: datetime.fromisoformat(v.replace("Z","+00:00")) after turning "+0000" into "+00:00", then .astimezone(); a value without offset counts as UTC). Compare timestamps as datetimes or in UTC, not as local display strings.`
