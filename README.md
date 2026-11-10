@@ -4,12 +4,12 @@ Status panels for the macOS menu bar and desktop, built by an AI from a single s
 
 The name is short for **Omarchy on the Mac**: [Omarchy](https://omarchy.org) is DHH's opinionated Arch Linux + Hyprland setup, whose keyboard-first launcher and status bar inspired OmaMac. OmaMac is an independent project, not affiliated with Omarchy, and brings that idea to macOS without replacing the macOS desktop.
 
-The app's interface is in German.
+The interface is available in English and German: it follows the macOS language, and Settings → General → Language switches it.
 
 ## Features
 
-- **Panels for the menu bar and the desktop:** Every panel has two switches – "Menüleiste" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
-- **Create and change panels with a sentence:** "+ Neues Panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
+- **Panels for the menu bar and the desktop:** Every panel has two switches – "Menu bar" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
+- **Create and change panels with a sentence:** "+ New panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
 - **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
 - **Share panels:** Export one or all of your panels as a `.omamac` file or via the clipboard, without live data or secrets – only the names of the variables they need. Import shows each panel's command first and adds panels switched off. A panel holding a secret in plain text cannot be exported.
@@ -18,8 +18,6 @@ The app's interface is in German.
 - **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
   Two more work on the same Jira instances: **Jira Activity**, the activity stream of all sites like the Data Center gadget (your tickets or everything, optionally per project), and **Jira Week**, a Kanban board with a column per day that pages week by week, by last change, resolution or due date. Built-in modules keep their settings in the panel (which instances, JQL or projects per instance) and can be duplicated, e.g. one week board per customer; the Jira instances themselves are managed under Settings.
 - **Automatic updates** from the GitHub releases; `omamac -check <panel.json>` checks a panel and renders a PNG preview.
-
-The UI is available in English and German (Settings → General → Language; by default it follows macOS).
 
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
