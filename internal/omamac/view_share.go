@@ -352,6 +352,7 @@ func (a *App) importPanels(b *ShareBundle) {
 			Step: len(src.PromptHistory) + 1, Prompt: T("Importiert aus ") + a.importSource,
 			Provider: "import", Timestamp: time.Now().Format("15:04:05"),
 		})
+		a.approved.allow(&p) // the import dialog showed its commands
 		_ = SavePanel(a.Config.PanelsDir, &p)
 		a.panels = append(a.panels, &p)
 		last = p.ID

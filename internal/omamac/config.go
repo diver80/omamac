@@ -50,6 +50,12 @@ type Config struct {
 
 	// Wal-Panel & Omarchy Desktop Settings
 	LauncherShortcut string `json:"launcher_shortcut"`
+	// LauncherAgent is what the launcher hands sentences to: "" OmaMac's own AI, else an
+	// agentDef ID ("claude", "codex", …). Terminal is the app the agents run in ("" the first
+	// installed of Ghostty, iTerm, Terminal). LauncherWidget shows the launcher's bar on the desktop.
+	LauncherAgent  string `json:"launcher_agent,omitempty"`
+	Terminal       string `json:"terminal,omitempty"`
+	LauncherWidget bool   `json:"launcher_widget,omitempty"`
 	// Language is "de" or "en"; empty follows the language of macOS.
 	Language            string `json:"language,omitempty"`
 	PanelsDir           string `json:"panels_dir"`

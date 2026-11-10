@@ -86,6 +86,9 @@ func (e *AIEngine) CompleteRequest(ctx context.Context, prompt string, images []
 	out, label, err := e.complete(ctx, prompt, images)
 	if err == nil {
 		progressStep(ctx, T("Antwort erhalten nach %d s (%d Zeichen)"), int(time.Since(start).Seconds()), len(out))
+		logf("ai", "%s answered in %.1f s (%d characters asked, %d images, %d answered)", label, time.Since(start).Seconds(), len(prompt), len(images), len(out))
+	} else {
+		logf("ai", "%s failed after %.1f s: %v", label, time.Since(start).Seconds(), err)
 	}
 	return out, label, err
 }
@@ -213,8 +216,9 @@ func (a *App) PanelEnv() []string { return panelEnv(a.Vault, a.Jira) }
 
 // panelEnv is the environment added to every panel command and action.
 func panelEnv(v *Vault, j *JiraModuleState) []string {
-	env := j.CredentialEnv()
-	return append(env, v.EnvSlice()...) // later duplicates win: the vault overrides
+	env := append(j.CredentialEnv(), v.EnvSlice()...) // later duplicates win: the vault overrides
+	setLogSecrets(env)                                // the log and the run list show these values as $NAME
+	return env
 }
 
 // credentialCatalogText lists the variable names and descriptions for the AI.

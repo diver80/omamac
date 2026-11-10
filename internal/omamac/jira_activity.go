@@ -232,6 +232,14 @@ func activityURL(inst JiraInstanceConfig, projects string, max int, keys []strin
 }
 
 func fetchActivity(ctx context.Context, inst JiraInstanceConfig, projects string, max int, keys []string) ([]JiraActivity, error) {
+	items, err := fetchActivityOnce(ctx, inst, projects, max, keys)
+	if ctx.Err() == nil {
+		logOutcome("jira", inst.Name+" activity", err)
+	}
+	return items, err
+}
+
+func fetchActivityOnce(ctx context.Context, inst JiraInstanceConfig, projects string, max int, keys []string) ([]JiraActivity, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, activityURL(inst, projects, max, keys), nil)
 	if err != nil {
 		return nil, err

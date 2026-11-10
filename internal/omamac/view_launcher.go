@@ -1,6 +1,7 @@
 package omamac
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -137,13 +138,38 @@ func (a *App) launcherItems(query string) []launchItem {
 	for _, h := range hits {
 		items = append(items, h.item)
 	}
-	prompt := strings.TrimSpace(query)
-	items = append(items, launchItem{
-		kind: launchAI, key: "ai-create", title: T("Neues Panel mit KI: „") + prompt + T("“"), glyph: "✨",
-		subtitle: T("Öffnet den Dialog im Hauptfenster"),
-		run:      func() { a.openCreate(prompt) },
-	})
-	return items
+	// As in Omalauncher: what names an app opens it, a sentence goes to the agent.
+	ask := a.agentItem(strings.TrimSpace(query))
+	if looksLikeSentence(q) || len(hits) == 0 || len(a.launchImages) > 0 {
+		return append([]launchItem{ask}, items...)
+	}
+	return append(items, ask)
+}
+
+// agentItem sends prompt (and the pasted images) to the bar's agent.
+func (a *App) agentItem(prompt string) launchItem {
+	ag := a.currentAgent()
+	it := launchItem{kind: launchAI, key: "ai-ask", glyph: "✨", run: func() {
+		images := a.launchImages
+		a.launchImages = nil
+		a.askAgent(prompt, images)
+	}}
+	if ag.agent == nil {
+		it.title = T("Neues Panel mit KI: „") + prompt + T("“")
+		it.subtitle = T("Öffnet den Dialog im Hauptfenster")
+	} else {
+		it.title = fmt.Sprintf(T("%s fragen: „%s“"), ag.Name, prompt)
+		it.subtitle = fmt.Sprintf(T("Startet im Terminal (%s), im Panel-Ordner"), a.terminal())
+	}
+	if n := len(a.launchImages); n > 0 {
+		it.subtitle += fmt.Sprintf(T(" · mit %d Bild(ern)"), n)
+	}
+	return it
+}
+
+// looksLikeSentence tells a sentence for the agent from a name typed to open something.
+func looksLikeSentence(q string) bool {
+	return len(strings.Fields(q)) >= 3 || strings.ContainsAny(q, "?!")
 }
 
 // matchScore rates how title matches q: 0 starts with it, 1 a word starts with
@@ -184,11 +210,22 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 	}
 	grouped := strings.TrimSpace(a.launcherQuery) == ""
 
-	ui.Column(c).Fill().Padding(12, 12, 8, 12).Gap(8).Children(func() {
+	root := ui.Column(c).Fill().Padding(12, 12, 8, 12).Gap(8)
+	if files := root.DroppedFiles(); files != nil {
+		a.addImages(&a.launchImages, files)
+	}
+	if root.FileDragOver() {
+		root.Border(2, t.Accent).Radius(12)
+	}
+	root.Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
 			in := ui.SearchField(c.Key("wal-q"), &a.launcherQuery).AutoFocus().
-				Placeholder(T("Programme, Panels, Fenster – oder ein neues Panel beschreiben")).
-				FontSize(15).Grow(1)
+				Placeholder(T("Programme, Panels, Fenster – oder ein Satz an die KI")).
+				FontSize(15).Grow(1).
+				OnPaste(func(text string) bool { return text == "" && a.pasteImage(&a.launchImages) })
+			if in.Shortcut(0, ui.KeyTab) {
+				a.nextAgent()
+			}
 			if in.Changed() {
 				a.launchSel = 0
 				a.launchList.ScrollTo(0, ui.Start)
@@ -204,9 +241,13 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 			if in.Submitted() && a.launchSel < len(items) {
 				items[a.launchSel].run()
 			}
+			a.renderAgentPill(c, "wal-agent")
 		})
 		if c.Shortcut(0, ui.KeyEscape) {
 			a.hideLauncher()
+		}
+		if len(a.launchImages) > 0 {
+			a.renderImageAttachments(c, "wal-images", &a.launchImages)
 		}
 
 		if a.busy {
@@ -227,6 +268,13 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 
 		// What the keys do, for the row chosen
 		ui.Row(c).FillWidth().Padding(4, 6, 0, 6).Gap(14).AlignItems(ui.Center).Children(func() {
+			pin := T("📌 Als Leiste auf den Desktop")
+			if a.Config.LauncherWidget {
+				pin = T("Leiste vom Desktop nehmen")
+			}
+			if textButton(c, "wal-pin", pin) {
+				a.setLauncherWidget(!a.Config.LauncherWidget)
+			}
 			action := T("öffnen")
 			if a.launchSel < len(items) {
 				switch items[a.launchSel].kind {
@@ -236,10 +284,12 @@ func (a *App) RenderWalPanelView(c *ui.Context) {
 					action = T("anordnen")
 				case launchApp:
 					action = T("starten")
+				case launchAI:
+					action = T("senden")
 				}
 			}
 			ui.Spacer(c)
-			for _, hint := range []string{T("↑↓ auswählen"), "↵ " + action, T("esc schließen")} {
+			for _, hint := range []string{T("⇥ Agent"), T("⌘V Bild"), T("↑↓ auswählen"), "↵ " + action, T("esc schließen")} {
 				ui.Text(c, hint).FontSize(11).TextColor(t.TextMuted)
 			}
 		})
@@ -268,8 +318,9 @@ func (a *App) renderLaunchRow(c *ui.Context, it launchItem, selected, showKind b
 			ui.Text(c, it.title).FontSize(13.5).SingleLine()
 			if it.panel != nil {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					statusDot(c, it.panel.Status)
-					ui.Text(c, it.subtitle).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					status, text := a.panelStatusLine(it.panel)
+					statusDot(c, status)
+					ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
 			} else if it.subtitle != "" {
 				ui.Text(c, it.subtitle).FontSize(11).TextColor(t.TextMuted).SingleLine()
@@ -329,6 +380,32 @@ func (a *App) appIcon(path string) ui.ImageSource {
 		}()
 	}
 	return nil
+}
+
+// renderAgentPill shows where sentences go, and switches it.
+func (a *App) renderAgentPill(c *ui.Context, key string) {
+	cur := a.currentAgent()
+	ui.Button(c.Key(key), "✨ "+cur.Name).Tooltip(T("Wohin Sätze gehen – ⇥ wechselt")).Menu(func(m *ui.Menu) {
+		for _, ch := range a.agentChoices() {
+			label := ch.Name
+			if ch.agent == nil {
+				label += T(" – Panels im Dialog, mit Bildern")
+			} else {
+				label += T(" – im Terminal")
+			}
+			if ch.ID == cur.ID {
+				label = "✓ " + label
+			}
+			if m.Item(label).Chosen() {
+				a.setAgent(ch.ID)
+			}
+		}
+		m.Separator()
+		if m.Item(T("Einstellungen …")).Chosen() {
+			a.activeTab = TabSettings
+			a.showStudio()
+		}
+	})
 }
 
 func (a *App) hideLauncher() {

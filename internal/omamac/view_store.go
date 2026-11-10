@@ -81,6 +81,7 @@ func (a *App) setStoreItemEnabled(it StoreCategoryItem, existing *PanelSpec, ena
 	}
 	clone := *it.Spec
 	clone.Enabled = true
+	a.approved.allow(&clone)
 	_ = SavePanel(a.Config.PanelsDir, &clone)
 	a.panels = append(a.panels, &clone)
 	a.selectPanel(clone.ID)

@@ -425,6 +425,14 @@ type foundIssue struct {
 
 // searchJQL runs jql on one instance: Cloud's /rest/api/3/search/jql, else Data Center's /rest/api/2/search.
 func (j *JiraModuleState) searchJQL(ctx context.Context, inst JiraInstanceConfig, jql string, max int) ([]foundIssue, error) {
+	found, err := j.searchJQLOnce(ctx, inst, jql, max)
+	if ctx.Err() == nil {
+		logOutcome("jira", inst.Name+" search", err)
+	}
+	return found, err
+}
+
+func (j *JiraModuleState) searchJQLOnce(ctx context.Context, inst JiraInstanceConfig, jql string, max int) ([]foundIssue, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(inst.BaseURL), "/")
 	payload, _ := json.Marshal(map[string]any{
 		"jql":        jql,

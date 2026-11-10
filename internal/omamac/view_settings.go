@@ -2,6 +2,7 @@ package omamac
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ func (a *App) renderTabSettings(c *ui.Context) {
 					func() { a.renderJiraInstanceEditor(c, "cfg-jira") })
 			}
 			a.renderVaultSettings(c)
+			a.renderLauncherSettings(c)
 			a.renderGeneralSettings(c)
 		})
 	})
@@ -201,18 +203,85 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 		})
 }
 
+// renderLauncherSettings: the launcher's shortcut, where its sentences go, the terminal
+// the coding agents run in, and the bar on the desktop.
+func (a *App) renderLauncherSettings(c *ui.Context) {
+	t := c.Theme()
+	section(c, "cfg-launcher", T("Schnellstart & Agenten"),
+		T("Im Schnellstart öffnet ein Name die App, ein Satz geht an die KI. Die OmaMac-KI baut Panels im Dialog – mit Screenshots und Mockups. Ein Coding-Agent startet im Terminal im Panel-Ordner und liest dort AGENTS.md: wie Panels aufgebaut sind und welche Variablen es gibt."),
+		func() {
+			ui.Form(c, func() {
+				ui.Field(c, T("Kürzel"), func() {
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						if ui.TextInput(c.Key("cfg-shortcut"), &a.shortcutText).Placeholder("Alt+Space").Width(180).Submitted() {
+							a.applyLauncherShortcut()
+						}
+						ui.Text(c, T("Mit Enter übernehmen")).FontSize(11.5).TextColor(t.TextMuted)
+					})
+				})
+				ui.Field(c, T("Sätze an"), func() {
+					ui.Column(c).Gap(4).Children(func() {
+						choices := a.agentChoices()
+						names := make([]string, len(choices))
+						for i, ch := range choices {
+							names[i] = ch.Name
+						}
+						cur := a.currentAgent().Name
+						if ui.Select(c.Key("cfg-agent"), &cur, names).Width(240).Changed() {
+							for _, ch := range choices {
+								if ch.Name == cur {
+									a.setAgent(ch.ID)
+								}
+							}
+						}
+						hint := T("Gefunden: ") + a.installedAgentNames()
+						if !a.agents.isDetected() {
+							hint = T("Suche installierte Agenten …")
+						}
+						ui.Text(c, hint).FontSize(11.5).TextColor(t.TextMuted)
+					})
+				})
+				ui.Field(c, "Terminal", func() {
+					terms := installedTerminals()
+					idx := 0
+					for i, name := range terms {
+						if name == a.terminal() {
+							idx = i
+						}
+					}
+					ui.Row(c).Children(func() {
+						if ui.Segmented(c.Key("cfg-terminal"), &idx, terms...).Changed() {
+							a.Config.Terminal = terms[idx]
+							_ = SaveConfig(a.ConfigPath, a.Config)
+						}
+					})
+				})
+				ui.Field(c, T("Leiste auf dem Desktop"), func() {
+					ui.Column(c).Gap(4).Children(func() {
+						on := a.Config.LauncherWidget
+						if ui.Switch(c.Key("cfg-bar"), &on).Changed() {
+							a.setLauncherWidget(on)
+						}
+						ui.Text(c, T("Eine schwebende Leiste wie in Omalauncher: ein Klick öffnet den Schnellstart darüber, Bilder lassen sich darauf ziehen.")).
+							FontSize(11.5).TextColor(t.TextMuted)
+					})
+				})
+				ui.Field(c, T("Panel-Ordner"), func() {
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, a.Config.PanelsDir).FontSize(12).Grow(1).MinWidth(0).SingleLine()
+						if ui.Button(c.Key("cfg-panels-dir"), T("Im Finder zeigen")).Clicked() {
+							mygo.Shell.ShowItemInFolder(filepath.Join(a.Config.PanelsDir, "AGENTS.md"))
+						}
+					})
+				})
+			})
+		})
+}
+
 func (a *App) renderGeneralSettings(c *ui.Context) {
 	t := c.Theme()
 	section(c, "cfg-general", T("Allgemein"), "", func() {
 		ui.Form(c, func() {
-			ui.Field(c, T("Schnellstart-Kürzel"), func() {
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					if ui.TextInput(c.Key("cfg-shortcut"), &a.shortcutText).Placeholder("Alt+Space").Width(180).Submitted() {
-						a.applyLauncherShortcut()
-					}
-					ui.Text(c, T("Mit Enter übernehmen")).FontSize(11.5).TextColor(t.TextMuted)
-				})
-			})
 			ui.Field(c, T("Sprache"), func() {
 				ui.Column(c).Gap(4).Children(func() {
 					idx := 0
@@ -232,6 +301,18 @@ func (a *App) renderGeneralSettings(c *ui.Context) {
 						}
 					})
 					ui.Text(c, T("Folgt der Sprache von macOS, wenn „System“ gewählt ist.")).FontSize(11.5).TextColor(t.TextMuted)
+				})
+			})
+			ui.Field(c, T("Protokoll"), func() {
+				ui.Column(c).Gap(4).FillWidth().Children(func() {
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, LogPath()).FontSize(12).Grow(1).MinWidth(0).SingleLine()
+						if ui.Button(c.Key("cfg-log-open"), T("Öffnen")).Clicked() {
+							a.openLogFile()
+						}
+					})
+					ui.Text(c, T("Läufe der Panel-Skripte, KI-Aufrufe, Jira-Fehler und gestartete Agenten. Werte aus dem Tresor und Jira-Tokens stehen dort nur als $NAME.")).
+						FontSize(11.5).TextColor(t.TextMuted)
 				})
 			})
 			ui.Field(c, "Version", func() {

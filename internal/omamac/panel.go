@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -89,7 +90,14 @@ type PanelSpec struct {
 	LastCommandOut string        `json:"last_command_out,omitempty"`
 	LastCheckMsg   string        `json:"last_check_msg,omitempty"` // Output from omamac-check (owl-check equivalent)
 	Config         *ModuleConfig `json:"config,omitempty"`         // settings of a built-in module (module_config.go)
+
+	// LastRunError says why the last run of Command failed ("" when it worked); the panel
+	// then shows as failed. Not saved: the next run tells again.
+	LastRunError string `json:"-"`
 }
+
+// commandTimeout is how long a panel's command may run before it is stopped.
+const commandTimeout = 18 * time.Second
 
 // DynamicCommandOutput allows a panel's shell Command to return JSON that dynamically overrides
 // badge_text, status, metrics, or rows on every refresh cycle.
@@ -202,7 +210,9 @@ func (p *PanelSpec) TrayLabel() string {
 const MenuBarStatusToken = "{status}"
 
 // RunDataRefresh executes the panel's shell Command (with Vault credentials injected as env vars)
-// and updates its live fields.
+// and updates its live fields. It fails when the command is stopped after commandTimeout, or
+// exits with an error without printing the panel's JSON; the panel then shows as failed
+// (Status "crit", LastRunError) with its last data, and the run is logged.
 func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) error {
 	p.LastUpdated = time.Now().Format("15:04:05")
 	cmdStr := strings.TrimSpace(p.Command)
@@ -210,20 +220,62 @@ func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) erro
 		return nil
 	}
 
-	runCtx, cancel := context.WithTimeout(ctx, 18*time.Second)
+	runCtx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
+	start := time.Now()
 	cmd := exec.CommandContext(runCtx, "/bin/zsh", "-c", cmdStr)
 	cmd.Env = append(os.Environ(), extraEnv...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	_ = cmd.Run()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr // apart, so a warning on stderr doesn't break the JSON on stdout
+	runErr := cmd.Run()
+	run := panelRun{At: start, Duration: time.Since(start)}
+	if runErr != nil {
+		run.Exit = -1
+		if ee, ok := runErr.(*exec.ExitError); ok {
+			run.Exit = ee.ExitCode()
+		}
+	}
 
-	raw := strings.TrimSpace(out.String())
-	p.LastCommandOut = raw
+	raw := strings.TrimSpace(stdout.String())
+	errOut := strings.TrimSpace(stderr.String())
 	if raw == "" {
-		return nil
+		raw = errOut // scripts that print everything to stderr worked before, too
+	}
+	p.LastCommandOut = raw
+	run.Output = maskSecrets(firstLines(raw, 8, 200))
+	parsedJSON := p.applyCommandOutput(raw)
+
+	switch {
+	case runCtx.Err() == context.DeadlineExceeded:
+		run.Err = fmt.Sprintf(T("nach %d s abgebrochen"), int(commandTimeout.Seconds()))
+	case ctx.Err() != nil:
+		run.Err = T("abgebrochen")
+	case runErr != nil && !parsedJSON:
+		run.Err = fmt.Sprintf(T("Exit-Code %d"), run.Exit)
+		if run.Exit == -1 {
+			run.Err = runErr.Error()
+		}
+		if line := firstLines(errOut, 1, 160); line != "" {
+			run.Err += ": " + line
+		}
+	}
+	run.Err = maskSecrets(run.Err)
+	recordRun(p.ID, run)
+	p.LastRunError = run.Err
+	if run.Err != "" {
+		p.Status = "crit"
+		return errors.New(run.Err)
+	}
+	return nil
+}
+
+// applyCommandOutput takes the command's output into the panel: its JSON object, or
+// KEY=VALUE lines. It reports whether the output was the panel's JSON.
+func (p *PanelSpec) applyCommandOutput(raw string) bool {
+	if raw == "" {
+		return false
 	}
 
 	// 1. If the command outputs JSON matching DynamicCommandOutput, merge it directly!
@@ -245,7 +297,7 @@ func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) erro
 			if len(dyn.Rows) > 0 {
 				p.Rows = dyn.Rows
 			}
-			return nil
+			return true
 		}
 	}
 
@@ -276,7 +328,7 @@ func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) erro
 	if len(parsedRows) > 0 && len(p.Rows) == 0 {
 		p.Rows = parsedRows
 	}
-	return nil
+	return false
 }
 
 // LoadPanels reads all *.json panel definitions from dir (or seeds defaults if empty),
@@ -302,6 +354,7 @@ func LoadPanels(dir string) ([]*PanelSpec, error) {
 		}
 		var p PanelSpec
 		if err := json.Unmarshal(raw, &p); err == nil {
+			p.ID = strings.TrimSuffix(e.Name(), ".json") // the file name is the id (agents write files)
 			p.Normalize()
 			panels = append(panels, &p)
 			seenIDs[p.ID] = true
@@ -340,7 +393,12 @@ func SavePanel(dir string, p *PanelSpec) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, p.ID+".json"), data, 0o644)
+	path := filepath.Join(dir, p.ID+".json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	noteOwnWrite(path, data) // the folder watch then knows this change is OmaMac's own
+	return nil
 }
 
 // DeletePanel removes <dir>/<id>.json.

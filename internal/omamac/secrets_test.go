@@ -52,6 +52,7 @@ func useMemSecrets(t *testing.T) *memSecrets {
 
 func TestMain(m *testing.M) {
 	useMemSecrets(nil) // the default for every test
+	setLogPath("")     // tests never write to the user's log
 	legacyVaultItems = &memSecrets{items: map[string][]byte{}}
 	os.Exit(m.Run())
 }

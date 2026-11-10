@@ -110,7 +110,7 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 						clicked = ui.Button(key, actCopy.Label).Clicked()
 					}
 					if clicked {
-						a.runPanelAction(actCopy)
+						a.runPanelAction(p, actCopy)
 					}
 				}
 			})
@@ -119,8 +119,13 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 }
 
 // runPanelAction runs an action button's command (with the vault's variables) and opens its URL.
-func (a *App) runPanelAction(act PanelAction) {
+func (a *App) runPanelAction(p *PanelSpec, act PanelAction) {
+	if act.Command != "" && a.isHeld(p) {
+		a.toast(fmt.Sprintf(T("„%s“ wartet auf deine Freigabe im Hauptfenster"), p.Title))
+		return
+	}
 	if act.Command != "" {
+		logf("panel", "%s: action %q", p.ID, act.Label)
 		cmd := exec.Command("/bin/zsh", "-c", act.Command)
 		cmd.Env = append(cmd.Environ(), panelEnv(a.Vault, a.Jira)...)
 		if cmd.Start() == nil {

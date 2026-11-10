@@ -2,8 +2,10 @@ package omamac
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -104,8 +106,9 @@ func (a *App) renderPanelRow(c *ui.Context, prefix string, p *PanelSpec, selecta
 				title.TextColor(t.TextMuted)
 			}
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				statusDot(c, p.Status)
-				ui.Text(c, panelStatusText(p)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				status, text := a.panelStatusLine(p)
+				statusDot(c, status)
+				ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
 		})
 		fixedCell(c, trayColWidth, func() {
@@ -142,6 +145,10 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 			return
 		}
 
+		if a.isHeld(sel) {
+			a.renderReviewBox(c, sel)
+		}
+
 		// The preview shows the panel as it opens from the menu bar.
 		ui.Column(c.Key("detail-preview")).FillWidth().Grow(1).MinHeight(0).Radius(10).Border(1, t.Border).Background(t.Surface).Clip().Children(func() {
 			a.renderNativePanelPopover(c, sel, nil, nil)
@@ -165,7 +172,12 @@ func (a *App) renderPanelDetail(c *ui.Context) {
 			a.renderPanelMoreMenu(c, sel)
 		})
 
+		if sel.LastRunError != "" && !a.isHeld(sel) {
+			ui.Text(c, T("Skript fehlgeschlagen: ")+sel.LastRunError).FontSize(11.5).TextColor(t.Danger).FillWidth()
+		}
+
 		a.renderPanelRefine(c, sel)
+		a.renderPanelRuns(c, sel)
 
 		if sel.Deletable() {
 			ui.Row(c).FillWidth().Children(func() {
@@ -333,17 +345,9 @@ func (a *App) deletePanel(id string) {
 		return
 	}
 	_ = DeletePanel(a.Config.PanelsDir, id)
-	var next []*PanelSpec
-	for _, item := range a.panels {
-		if item.ID != id {
-			next = append(next, item)
-		}
-	}
-	a.panels = next
-	if a.selectedPanelID == id && len(a.panels) > 0 {
-		a.selectPanel(a.panels[0].ID)
-	}
-	a.syncAllPanelRuntimes()
+	a.removePanel(id)
+	a.approved.forget(id)
+	logf("app", "%s deleted", id)
 	a.toast(T("„") + p.Title + T("“ gelöscht"))
 }
 
@@ -428,4 +432,106 @@ func (a *App) applyRename(p *PanelSpec) {
 	a.showRename = false
 	a.syncAllPanelRuntimes()
 	a.toast(T("„") + p.Title + T("“ gespeichert"))
+}
+
+// panelStatusLine is a panel's dot and short status in lists: waiting for the user's OK,
+// failed, or what its script reports.
+func (a *App) panelStatusLine(p *PanelSpec) (status, text string) {
+	switch {
+	case a.isHeld(p):
+		return "warn", T("wartet auf deine Freigabe")
+	case p.LastRunError != "":
+		return "crit", T("Skript fehlgeschlagen")
+	}
+	return p.Status, panelStatusText(p)
+}
+
+// renderReviewBox shows the commands of a panel written outside OmaMac (by a coding agent,
+// say) until the user allows them.
+func (a *App) renderReviewBox(c *ui.Context, p *PanelSpec) {
+	t := c.Theme()
+	ui.Column(c.Key("review-"+p.ID)).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Warning).
+		Background(t.Warning.Alpha(0.08)).Gap(8).Children(func() {
+		ui.Text(c, T("Befehl prüfen")).FontSize(13).Bold()
+		ui.Text(c, T("Dieses Panel kommt von außerhalb von OmaMac, z. B. von einem Coding-Agenten. Seine Befehle laufen erst, wenn du sie freigibst.")).
+			FontSize(11.5).TextColor(t.TextMuted).FillWidth()
+		ui.Scroll(c).FillWidth().MaxHeight(150).Children(func() {
+			ui.Column(c).FillWidth().Padding(8, 10).Radius(6).Background(t.Background).Gap(6).Children(func() {
+				if cmd := strings.TrimSpace(p.Command); cmd != "" {
+					ui.Text(c, cmd).Font("monospace").FontSize(11).FillWidth().Selectable()
+				}
+				for _, act := range p.Actions {
+					if cmd := strings.TrimSpace(act.Command); cmd != "" {
+						ui.Text(c, fmt.Sprintf(T("Aktion „%s“: %s"), act.Label, cmd)).Font("monospace").FontSize(11).FillWidth().Selectable()
+					}
+				}
+			})
+		})
+		if vars := panelVariables(p); len(vars) > 0 {
+			ui.Text(c, T("Nutzt: ")+"$"+strings.Join(vars, ", $")).FontSize(11).TextColor(t.TextMuted).FillWidth()
+		}
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Spacer(c)
+			if p.Deletable() && ui.Button(c.Key("review-delete-"+p.ID), T("Löschen …")).Clicked() {
+				a.askDeletePanel(p)
+			}
+			if ui.PrimaryButton(c.Key("review-allow-"+p.ID), T("Freigeben")).Tooltip(T("Der Befehl läuft ab jetzt bei jeder Aktualisierung")).Clicked() {
+				a.allowPanel(p)
+			}
+		})
+	})
+}
+
+// renderPanelRuns lists the last runs of a panel's script, as the log has them.
+func (a *App) renderPanelRuns(c *ui.Context, p *PanelSpec) {
+	if strings.TrimSpace(p.Command) == "" || p.IsBuiltin {
+		return
+	}
+	runs := panelRuns(p.ID)
+	if len(runs) == 0 {
+		return
+	}
+	t := c.Theme()
+	ui.Collapsible(c, fmt.Sprintf(T("Läufe (%d)"), len(runs)), &a.showRuns, func() {
+		ui.Column(c).FillWidth().Gap(4).Children(func() {
+			for i, r := range runs {
+				ui.Column(c.Key(fmt.Sprintf("run-%s-%d", p.ID, i))).FillWidth().Gap(2).Children(func() {
+					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+						status := "ok"
+						if r.failed() {
+							status = "crit"
+						}
+						statusDot(c, status)
+						ui.Text(c, r.At.Format("15:04:05")).FontSize(11)
+						ui.Text(c, fmt.Sprintf(T("%.1f s · Exit %d"), r.Duration.Seconds(), r.Exit)).FontSize(11).TextColor(t.TextMuted)
+					})
+					if r.Err != "" {
+						ui.Text(c, r.Err).FontSize(11).TextColor(t.Danger).FillWidth()
+					} else if r.Output != "" && i == 0 {
+						ui.Text(c, firstLines(r.Output, 3, 120)).Font("monospace").FontSize(10.5).TextColor(t.TextMuted).FillWidth()
+					}
+				})
+			}
+			ui.Row(c).FillWidth().Children(func() {
+				ui.Spacer(c)
+				if textButton(c, "runs-log", T("Protokoll öffnen")) {
+					a.openLogFile()
+				}
+			})
+		})
+	})
+}
+
+// openLogFile shows OmaMac's log in the Console app (or whatever opens .log files).
+func (a *App) openLogFile() {
+	path := LogPath()
+	if path == "" {
+		return
+	}
+	if _, err := os.Stat(path); err != nil {
+		logf("app", "log opened") // so there is a file to open
+	}
+	if err := mygo.Shell.OpenPath(path); err != nil {
+		a.toast("⚠️ " + err.Error())
+	}
 }

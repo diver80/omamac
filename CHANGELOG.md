@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.0
+
+- **Agents in the launcher:** As in Omalauncher, a name opens the app and a sentence goes to an agent. The button next to the search field (or ⇥) chooses where sentences go:
+  - OmaMac's own AI (Gemini or Claude) still builds panels in the dialog, with screenshots and mockups;
+  - Claude Code, Codex, Gemini CLI, Antigravity or opencode start in your terminal (Ghostty, iTerm or Terminal), in the panels folder.
+  Images pasted (⌘V) or dropped into the launcher go along to either.
+- **Agent workspace:** The panels folder has an `AGENTS.md` (plus `CLAUDE.md` and `GEMINI.md` pointing to it) that tells agents how a panel file looks, how commands run and which variables there are (names only, never values).
+  - `omamac check <panel>.json` runs a panel and shows its output and a preview, with secret values replaced by `$NAME`.
+  - `omamac vars` lists the variables, and `omamac log` shows the recent log.
+- **Panels from the folder:** OmaMac watches the panels folder. A panel a coding agent writes shows up at once, switched off. A command that is new or was changed outside OmaMac runs only once you allow it: the main window shows it in a "Check the command" box, and macOS notifies you. Panels made in OmaMac, from templates or imports, and all panels from before this version, need no approval.
+- **Log:** `~/Library/Logs/OmaMac/omamac.log` records failed panel scripts, AI calls, Jira errors and agent starts, with vault values and tokens shown as `$NAME`.
+  - Settings → General → Log opens it.
+  - Each panel lists its last runs (time, duration, exit code, error).
+- **Failed scripts show as failed:** A script that exits with an error without printing its JSON, or runs longer than 18 s, turns the panel red, with the reason. Error output no longer mixes into the panel's JSON, so a warning on stderr can't break a panel.
+- **Launcher bar on the desktop (optional):** Settings → Launcher & agents → "Bar on the desktop", or 📌 in the launcher, puts a floating bar on the desktop. A click opens the launcher above it, and images can be dropped on it.
+
 ## 1.9.0
 
 - **English UI:** OmaMac now speaks English and German. It follows the macOS language (English for everyone who reads neither); Settings → General → Language switches between System, Deutsch and English at once. Delivered panels and templates show their names in the chosen language, and the AI writes new panels' texts in it.

@@ -345,6 +345,35 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.launcherQuery = "te"
 	app.launchSel = 0
 	savePNG("06-schnellstart-suche.png", app.RenderWalPanelView, 680, 480)
+
+	// A sentence goes to the coding agent chosen next to the field
+	app.agents.found = []agentInfo{{agentDefs[0], "/opt/homebrew/bin/claude"}}
+	app.agents.detected = true
+	app.Config.LauncherAgent, app.Config.Terminal = "claude", "Terminal"
+	app.launcherQuery = "Zeige meine offenen GitHub-Pull-Requests als Panel"
+	if Language() == "en" {
+		app.launcherQuery = "Make a panel with my open GitHub pull requests"
+	}
+	savePNG("14-agent.png", app.RenderWalPanelView, 680, 480)
+
+	// What the agent wrote into the panels folder: its command waits for the user's OK
+	ext := &PanelSpec{ID: "github-prs", Title: "GitHub Pull Requests", Icon: "🐙", BadgeText: "3 PRs", Status: "info", RefreshSeconds: 120,
+		Command: `gh pr list --author "@me" --state open --json number,title,url,reviewDecision |
+  jq '{badge_text: "\(length) PRs", status: (if length > 0 then "info" else "ok" end),
+       rows: [.[] | {left: "#\(.number) \(.title)", right: (.reviewDecision // "open"), url: .url}]}'`,
+		Actions: []PanelAction{{Label: "GitHub", Command: "open https://github.com/pulls", Style: "primary"}},
+		Rows:    []PanelRow{{Left: "#41 Launcher: agent bar", Right: "REVIEW_REQUIRED"}, {Left: "#40 Panel folder watch", Right: "APPROVED"}}}
+	ext.Normalize()
+	app.panels = append(app.panels, ext)
+	app.syncAllPanelRuntimes()
+	app.selectPanel(ext.ID)
+	app.prompt2Text = ""
+	savePNG("15-befehl-pruefen.png", app.RenderStudioView, 1320, 900)
+	if dir := os.Getenv("OMAMAC_SETTINGS_PNG"); dir != "" { // the whole settings page, to look at
+		app.activeTab = TabSettings
+		outDir = dir
+		savePNG("settings-full.png", app.RenderStudioView, 1320, 2600)
+	}
 }
 
 // A CLI that prints its error to stdout and exits non-zero ("Usage Limit Reached")

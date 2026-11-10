@@ -1,14 +1,10 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"image/png"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
@@ -21,12 +17,20 @@ import (
 func main() {
 	configPath := flag.String("config", omamac.DefaultConfigPath(), "path of the OmaMac configuration file (~/.config/omamac/config.json)")
 	startWalOnly := flag.Bool("wal", false, "open the launcher right at the start")
-	checkFile := flag.String("check", "", "check a panel JSON file: run its data script and render a PNG preview")
+	checkFile := flag.String("check", "", "check a panel JSON file (the same as: omamac check <file>)")
+	flag.Usage = func() {
+		fmt.Fprint(flag.CommandLine.Output(), "OmaMac – menu bar panels, launcher and agents.\n\nFlags:\n")
+		flag.PrintDefaults()
+		fmt.Fprint(flag.CommandLine.Output(), "\nCommands for agents and scripts: omamac help\n")
+	}
 	flag.Parse()
 
+	// Commands for coding agents in the panels folder (AGENTS.md): check, vars, log, help.
 	if *checkFile != "" {
-		runOmaMacCheck(*configPath, *checkFile)
-		return
+		os.Exit(omamac.RunCLI(*configPath, []string{"check", *checkFile}, os.Stdout, os.Stderr))
+	}
+	if flag.NArg() > 0 {
+		os.Exit(omamac.RunCLI(*configPath, flag.Args(), os.Stdout, os.Stderr))
 	}
 
 	mygo.App.SetName("OmaMac")
@@ -83,46 +87,4 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// runOmaMacCheck implements the macOS equivalent of OmaLauncher's `owl-check <file>`:
-// It loads the panel JSON, verifies Homebrew dependencies, executes the live data command,
-// renders a PNG preview of the widget/panel, and prints the PNG path for visual inspection.
-func runOmaMacCheck(configPath, panelFile string) {
-	raw, err := os.ReadFile(panelFile)
-	if err != nil {
-		log.Fatalf("omamac-check error reading %s: %v", panelFile, err)
-	}
-	var spec omamac.PanelSpec
-	if err := json.Unmarshal(raw, &spec); err != nil {
-		log.Fatalf("omamac-check invalid JSON in %s: %v", panelFile, err)
-	}
-
-	appState, err := omamac.NewApp(configPath)
-	if err != nil {
-		log.Fatalf("omamac-check app init failed: %v", err)
-	}
-
-	notes, checkErr := spec.CheckPanelSpec(context.Background(), appState.PanelEnv()...)
-	for _, n := range notes {
-		fmt.Println("•", n)
-	}
-	if checkErr != nil {
-		log.Fatalf("omamac-check FAILED: %v", checkErr)
-	}
-
-	outDir := filepath.Join(omamac.DefaultConfigDir(), "previews")
-	_ = os.MkdirAll(outDir, 0o755)
-	pngPath := filepath.Join(outDir, spec.ID+"-preview.png")
-
-	img := ui.Render(appState.RenderStudioView, 1280, 800, 2.0)
-	f, err := os.Create(pngPath)
-	if err != nil {
-		log.Fatalf("omamac-check create PNG failed: %v", err)
-	}
-	defer f.Close()
-	if err := png.Encode(f, img); err != nil {
-		log.Fatalf("omamac-check encode PNG failed: %v", err)
-	}
-	fmt.Printf("LIVE_PREVIEW_PNG=%s\n", pngPath)
 }

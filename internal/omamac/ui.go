@@ -57,6 +57,7 @@ type App struct {
 
 	studioWin *mygo.Window
 	walWin    *mygo.Window
+	barWin    *mygo.Window // the launcher's bar as a desktop widget (Config.LauncherWidget)
 	mainTray  *mygo.Tray
 	desktop   bool      // StartDesktopServices ran: trays and windows may be created
 	walBlurAt time.Time // when the launcher last hid because it lost the focus
@@ -102,6 +103,10 @@ type App struct {
 	launchSel     int // the chosen row
 	launchList    ui.ListState
 	iconCache     appIconCache
+	launchImages  []string      // images pasted into the launcher, for the agent
+	agents        agentRegistry // the coding agents installed
+	approved      *approvals    // the commands the user allowed (panel_watch.go)
+	showRuns      bool          // the chosen panel's recent runs are unfolded
 
 	// Settings & Central Credentials Vault draft state
 	providerIdx   int // 0 = Gemini, 1 = Claude
@@ -160,7 +165,11 @@ var (
 )
 
 // NewApp initializes OmaMac, loads config, vault, and saved panels, and prepares the AI engine.
-func NewApp(configPath string) (*App, error) {
+func NewApp(configPath string) (*App, error) { return newApp(configPath, false) }
+
+// newApp is NewApp; for the omamac command (cli) it leaves the approved commands alone,
+// which only the app keeps.
+func newApp(configPath string, cli bool) (*App, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -193,6 +202,9 @@ func NewApp(configPath string) (*App, error) {
 		runtimes:      make(map[string]*panelRuntime),
 		apps:          DiscoverMacApps(),
 		showHelpModal: !cfg.OnboardingDismissed, // the short guide opens once, on the first start
+	}
+	if !cli {
+		a.approved = loadApprovals(approvalsPath(configPath), panels)
 	}
 	if len(panels) > 0 {
 		a.selectPanel(panels[0].ID)
@@ -339,6 +351,21 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	}
 	a.pendingImports = nil
 
+	// Panels written by coding agents come in through the folder; the agents find their
+	// instructions and the omamac command there.
+	a.watchPanels()
+	mygo.App.OnNotificationClick(a.onNotificationClick)
+	go func() {
+		a.detectAgents()
+		a.updateUI(func() {
+			if err := a.writeAgentWorkspace(); err != nil {
+				logf("agent", "workspace not written: %v", err)
+			}
+		})
+	}()
+	a.syncLauncherBar()
+	logf("app", "OmaMac %s started, %d panels", versionLabel(), len(a.panels))
+
 	// 2. Register global hotkey (e.g. Alt+Space)
 	if a.Config.LauncherShortcut != "" {
 		_ = mygo.GlobalShortcut.Register(a.Config.LauncherShortcut, func() {
@@ -379,10 +406,19 @@ func (a *App) ToggleWalPanel() {
 	if time.Since(a.walBlurAt) < 400*time.Millisecond {
 		return
 	}
+	a.showLauncher(nil)
+}
+
+// showLauncher opens the launcher empty: centered, or with its top-left corner at at.
+func (a *App) showLauncher(at *mygo.Point) {
 	a.launcherQuery = ""
 	a.launchSel = 0
 	a.launchList.ScrollTo(0, ui.Start)
-	a.walWin.Center()
+	if at != nil {
+		a.walWin.SetPosition(at.X, at.Y)
+	} else {
+		a.walWin.Center()
+	}
 	a.walWin.Show()
 	a.walWin.Focus()
 	a.walWin.Invalidate()
@@ -694,6 +730,9 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 			a.Jira.RefreshWeekPanel(ctx, p)
 		}
 	default:
+		if a.isHeld(p) {
+			return // its command waits for the user's OK (panel_watch.go)
+		}
 		_ = p.RunDataRefresh(ctx, panelEnv(a.Vault, a.Jira)...)
 	}
 }
@@ -818,6 +857,7 @@ func (a *App) triggerPrompt1Create() {
 			run.setResult(T("erstellt"), created, checks)
 			a.createImages = nil
 			for _, p := range created {
+				a.approved.allow(p) // made in OmaMac, its command shown in the result
 				_ = SavePanel(a.Config.PanelsDir, p)
 				a.panels = append(a.panels, p)
 			}
@@ -889,6 +929,7 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			if !replaced {
 				return // the panel was deleted while the AI was working: don't bring it back
 			}
+			a.approved.allow(updated)
 			_ = SavePanel(a.Config.PanelsDir, updated)
 			a.selectPanel(updated.ID)
 			if rt, ok := a.runtimes[updated.ID]; ok && rt.flyout != nil && !rt.flyout.IsDestroyed() {

@@ -11,13 +11,18 @@ The interface is available in English and German: it follows the macOS language,
 - **Panels for the menu bar and the desktop:** Every panel has two switches – "Menu bar" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
 - **Create and change panels with a sentence:** "+ New panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
-- **Launcher (`⌥ Space`):** One search field for apps, panels, window layouts and new panels; driven with ↑↓ and ↵.
+- **Launcher (`⌥ Space`):** One search field for apps, panels and window layouts; driven with ↑↓ and ↵. As in [Omalauncher](https://github.com/SimonSchubert/omalauncher), a name opens what it names and a sentence goes to an agent:
+  - OmaMac's own AI builds a panel in the dialog, with screenshots or mockups pasted with ⌘V;
+  - a coding agent (Claude Code, Codex, Gemini CLI, Antigravity, opencode) starts in your terminal.
+  ⇥ or the button next to the field switches between them. Optionally the launcher's bar floats on the desktop.
+- **Coding agents write panels too:** Agents start in the panels folder, where `AGENTS.md` explains the panel format and lists the variables by name. `omamac check <panel>.json` runs a panel and renders a preview, with secret values shown as `$NAME`. OmaMac picks up new files at once, switched off. A command written outside OmaMac runs only after you allow it in the main window.
 - **Share panels:** Export one or all of your panels as a `.omamac` file or via the clipboard, without live data or secrets – only the names of the variables they need. Import shows each panel's command first and adds panels switched off. A panel holding a secret in plain text cannot be exported.
 - **Templates:** Add ready-made panels with a switch, or use one as the starting point for your own AI panel.
 - **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name. The Jira Quick-Access instances add `$JIRA_<NAME>_URL`, `_EMAIL` and `_API_TOKEN` automatically.
 - **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
   Two more work on the same Jira instances: **Jira Activity**, the activity stream of all sites like the Data Center gadget (your tickets or everything, optionally per project), and **Jira Week**, a Kanban board with a column per day that pages week by week, by last change, resolution or due date. Built-in modules keep their settings in the panel (which instances, JQL or projects per instance) and can be duplicated, e.g. one week board per customer; the Jira instances themselves are managed under Settings.
-- **Automatic updates** from the GitHub releases; `omamac -check <panel.json>` checks a panel and renders a PNG preview.
+- **Log:** `~/Library/Logs/OmaMac/omamac.log` records failed panel scripts, AI calls, Jira errors and agent starts, with vault values and tokens masked. Each panel lists its last runs, and a failing script turns its panel red.
+- **Automatic updates** from the GitHub releases.
 
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
