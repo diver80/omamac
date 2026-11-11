@@ -21,19 +21,18 @@ const agentBuiltin = "omamac" // the app's own panel AI
 // agentDef is a coding agent the bar can start.
 type agentDef struct {
 	ID, Name string
-	Bin      string                       // program name
-	Args     func(prompt string) []string // starts it interactively with prompt as the first message
-	ImageRef func(path string) string     // how a prompt points it at an image file
+	Bin      string                   // program name
+	ImageRef func(path string) string // how a prompt points it at an image file
 }
 
 func plainImageRef(path string) string { return path }
 
 var agentDefs = []agentDef{
-	{ID: "claude", Name: "Claude Code", Bin: "claude", Args: func(p string) []string { return []string{p} }, ImageRef: plainImageRef},
-	{ID: "codex", Name: "Codex", Bin: "codex", Args: func(p string) []string { return []string{p} }, ImageRef: plainImageRef},
-	{ID: "gemini", Name: "Gemini CLI", Bin: "gemini", Args: func(p string) []string { return []string{"-i", p} }, ImageRef: func(path string) string { return "@" + path }},
-	{ID: "agy", Name: "Antigravity", Bin: "agy", Args: func(p string) []string { return []string{"-i", p} }, ImageRef: plainImageRef},
-	{ID: "opencode", Name: "opencode", Bin: "opencode", Args: func(p string) []string { return []string{"--prompt", p} }, ImageRef: plainImageRef},
+	{ID: "claude", Name: "Claude Code", Bin: "claude", ImageRef: plainImageRef},
+	{ID: "codex", Name: "Codex", Bin: "codex", ImageRef: plainImageRef},
+	{ID: "gemini", Name: "Gemini CLI", Bin: "gemini", ImageRef: func(path string) string { return "@" + path }},
+	{ID: "agy", Name: "Antigravity", Bin: "agy", ImageRef: plainImageRef},
+	{ID: "opencode", Name: "opencode", Bin: "opencode", ImageRef: plainImageRef},
 }
 
 // agentInfo is an installed agent: where its program is.
@@ -198,7 +197,8 @@ func (a *App) nextAgent() {
 	}
 }
 
-// askAgent sends the bar's sentence and its images to the current target.
+// askAgent sends the bar's sentence and its images to the current target: OmaMac's AI
+// in the "Neues Panel" dialog, or a coding agent in the background (agent_run.go).
 func (a *App) askAgent(prompt string, images []string) {
 	ch := a.currentAgent()
 	if ch.agent == nil {
@@ -207,23 +207,7 @@ func (a *App) askAgent(prompt string, images []string) {
 		return
 	}
 	a.hideLauncher()
-	fail := func(err error) {
-		logf("agent", "%s did not start: %v", ch.Name, err)
-		a.statusErr = true
-		a.statusMsg = fmt.Sprintf(T("%s ließ sich nicht starten: %v"), ch.Name, err)
-		a.toast("⚠️ " + a.statusMsg)
-		a.showStudio()
-	}
-	if err := a.writeAgentWorkspace(); err != nil { // here: it reads the vault's catalog
-		fail(err)
-		return
-	}
-	ag, term := *ch.agent, a.terminal()
-	go func() { // opening the terminal takes a moment
-		if err := launchAgent(ag, term, a.Config.PanelsDir, a.cliBinDir(), prompt, images); err != nil {
-			a.updateUI(func() { fail(err) })
-		}
-	}()
+	a.runAgentBackground(*ch.agent, prompt, images, false)
 }
 
 // Terminals the agents can run in, by the name of their app.
@@ -249,28 +233,21 @@ func terminalInstalled(name string) bool {
 	return false
 }
 
-// terminal is the one chosen in the settings, else the first installed one.
+// terminal is the one chosen in the settings, else Terminal: every Mac has it, and it
+// runs a script opened with it without asking for any permission.
 func (a *App) terminal() string {
-	list := installedTerminals()
-	for _, name := range list {
+	for _, name := range installedTerminals() {
 		if name == a.Config.Terminal {
 			return name
 		}
 	}
-	return list[0]
+	return "Terminal"
 }
 
-// launchAgent starts ag in a window of the terminal term, in the folder ws, with prompt;
+// openInTerminal starts ag with args in a window of the terminal term, in the folder ws;
 // binDir, with the omamac command, goes first in its PATH.
-func launchAgent(ag agentInfo, term, ws, binDir, prompt string, images []string) error {
-	if len(images) > 0 {
-		refs := make([]string, len(images))
-		for i, img := range images {
-			refs[i] = ag.ImageRef(img)
-		}
-		prompt += "\n\nAttached images (look at them): " + strings.Join(refs, " ")
-	}
-	script := agentScript(ws, binDir, ag.Path, ag.Args(prompt), "OmaMac · "+ag.Name)
+func openInTerminal(ag agentInfo, term, ws, binDir string, args []string) error {
+	script := agentScript(ws, binDir, ag.Path, args, "OmaMac · "+ag.Name)
 	f, err := os.CreateTemp("", "omamac-agent-*.command")
 	if err != nil {
 		return err
@@ -288,7 +265,6 @@ func launchAgent(ag agentInfo, term, ws, binDir, prompt string, images []string)
 		_ = os.Remove(f.Name())
 		return fmt.Errorf("%s: %v %s", term, err, strings.TrimSpace(string(out)))
 	}
-	logf("agent", "%s started in %s (%d characters, %d images)", ag.Name, term, len(prompt), len(images))
 	return nil
 }
 
@@ -413,7 +389,11 @@ here, so changes to it are lost.
   the command runs. Never print their values (no `+"`echo $TOKEN`"+`, no `+"`env`"+`).
 - A new panel arrives switched off, and a new or changed command does not run until the
   user allows it in OmaMac. Tell the user to check the panel there and switch it on.
-- Run `+"`omamac check <id>.json`"+` after every change and fix what it reports.
+- Run `+"`omamac check <id>.json`"+` after every change and fix what it reports. It runs the
+  command with the variables it names, so try an API through a panel's command and check it.
+- Started by OmaMac in the background, you may only edit files in this folder and run
+  `+"`omamac`"+` commands: no other shell commands, no web tools. Nobody can answer questions while
+  you work, so decide sensibly, and say what you assumed in your final answer.
 - Write the panel's texts (title, labels, badge) in %s.
 
 ## A panel

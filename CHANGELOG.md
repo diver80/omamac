@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.12.0
+
+- **Coding agents run in the background, without a terminal:** Claude Code, Codex, Gemini CLI, Antigravity or opencode now work in OmaMac itself, in the panels folder, using each agent's non-interactive mode. This works on every Mac, with no terminal app and no AppleScript permission.
+  - **Progress:** the "AI is working" dialog shows the agent's steps live ("Writes github-prs.json", "Runs: omamac check …") and then its answer.
+  - **Limits:** the agent may only edit files in the panels folder and run `omamac` commands; anything else is refused and shown.
+  - **Images:** Claude Code receives pasted images directly.
+- **Reply and continue:** After a run, a reply in the dialog continues the same session. "Continue in the terminal" opens it interactively in Terminal, which every Mac has; iTerm or Ghostty only when chosen in the settings.
+- **The panels written** are listed in the dialog, with a "Check" button when their commands wait for your OK.
+- `omamac check` gives a panel's command only the variables it names.
+
 ## 1.11.0
 
 - **Dashboard:** The main window opens on a dashboard. All panels are tiles in a grid, with the launcher's bar below them: a name opens an app, a sentence goes to the agent, and images can be pasted or dropped.

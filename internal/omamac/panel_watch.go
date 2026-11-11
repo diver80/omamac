@@ -237,6 +237,10 @@ func (a *App) reloadPanelFile(name string) {
 	}
 	p.ID = id // the file name is the id
 	p.Normalize()
+	if a.externalAt == nil {
+		a.externalAt = map[string]time.Time{}
+	}
+	a.externalAt[id] = time.Now() // for the result of an agent's run
 
 	if existing == nil {
 		wanted := p.Enabled || p.PinnedFloating

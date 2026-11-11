@@ -364,6 +364,26 @@ func TestGenerateScreenshots(t *testing.T) {
 	}
 	savePNG("14-agent.png", app.RenderWalPanelView, 680, 480)
 
+	// A coding agent's background run in the "KI arbeitet" dialog
+	agentRun := &aiRun{title: "Claude Code: " + app.launcherQuery, started: time.Now().Add(-48 * time.Second), cancel: func() {}}
+	agentRun.agent = &app.agents.found[0]
+	agentRun.steps = []aiStep{
+		{0, fmt.Sprintf(T("Anfrage an %s gesendet (%d Zeichen)"), "Claude Code", 412)},
+		{4 * time.Second, fmt.Sprintf(T("Liest %s"), "AGENTS.md")},
+		{19 * time.Second, fmt.Sprintf(T("Schreibt %s"), "github-prs.json")},
+		{23 * time.Second, fmt.Sprintf(T("Führt aus: %s"), "omamac check github-prs.json")},
+	}
+	summary := "Ich habe github-prs.json geschrieben: Es ruft „gh pr list“ auf und zeigt deine offenen Pull Requests mit ihrem Review-Status. omamac check läuft ohne Fehler (3 Zeilen). Bitte das Panel in OmaMac freigeben und einschalten."
+	if Language() == "en" {
+		summary = "I wrote github-prs.json: it calls “gh pr list” and shows your open pull requests with their review state. omamac check passes (3 rows). Please allow the panel in OmaMac and switch it on."
+	}
+	agentRun.output.WriteString(summary)
+	app.aiRun, app.showAIRun = agentRun, true
+	agentRun.finish(nil)
+	agentRun.ended = agentRun.started.Add(31 * time.Second)
+	savePNG("17-agent-hintergrund.png", app.RenderStudioView, 1320, 900)
+	app.aiRun, app.showAIRun = nil, false
+
 	// What the agent wrote into the panels folder: its command waits for the user's OK
 	ext := &PanelSpec{ID: "github-prs", Title: "GitHub Pull Requests", Icon: "🐙", BadgeText: "3 PRs", Status: "info", RefreshSeconds: 120,
 		Command: `gh pr list --author "@me" --state open --json number,title,url,reviewDecision |

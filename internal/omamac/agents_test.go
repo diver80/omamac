@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -398,5 +399,107 @@ func TestDashboard(t *testing.T) {
 	}
 	if app.sidebarCollapsed() != true {
 		t.Fatal("the sidebar is open on the dashboard by default")
+	}
+}
+
+// Background mode: each agent's non-interactive arguments.
+func TestHeadlessArgs(t *testing.T) {
+	claude := agentInfo{agentDefs[0], "/x/claude"}
+	args := headlessArgs(claude, "ignored: on stdin", false)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-p", "--output-format stream-json", "--verbose", "--permission-mode acceptEdits"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("claude args lack %q: %q", want, args)
+		}
+	}
+	if args[len(args)-2] != "--allowedTools" || strings.Contains(joined, "ignored") {
+		t.Fatalf("claude: tools last, prompt on stdin: %q", args)
+	}
+	if !strings.Contains(strings.Join(headlessArgs(claude, "", true), " "), "--continue") {
+		t.Fatal("claude does not continue")
+	}
+	for _, def := range agentDefs[1:] {
+		ag := agentInfo{def, "/x/" + def.Bin}
+		args := headlessArgs(ag, "the prompt", false)
+		found := false
+		for _, a := range args {
+			found = found || a == "the prompt"
+		}
+		if !found {
+			t.Errorf("%s: prompt missing in %q", def.ID, args)
+		}
+	}
+}
+
+// A background run streams what the agent says and does, and the files it writes land
+// in the panels folder.
+func TestRunAgentProcess(t *testing.T) {
+	dir := t.TempDir()
+	bin := t.TempDir()
+	fake := filepath.Join(t.TempDir(), "claude")
+	_ = os.WriteFile(fake, []byte(`#!/bin/sh
+read -r msg
+case "$PATH" in "`+bin+`":*) ;; *) echo '{"type":"result","is_error":true,"result":"omamac not first in PATH"}'; exit 1;; esac
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Ich baue das Panel."}]}}'
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"'"$PWD"'/prs.json"}}]}}'
+echo '{"title":"PRs","command":"echo BADGE=1"}' > prs.json
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"omamac check prs.json"}}]}}'
+echo '{"type":"result","is_error":false,"result":"done","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"curl example.com"}}]}'
+`), 0o755)
+	var steps []string
+	var out strings.Builder
+	ctx := WithAIProgress(context.Background(), &AIProgress{
+		Step:   func(s string) { steps = append(steps, s) },
+		Output: func(s string) { out.WriteString(s) },
+	})
+	ag := agentInfo{agentDefs[0], fake}
+	if err := runAgentProcess(ctx, ag, dir, bin, agentPrompt("Mach ein PR-Panel", ag, nil), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(steps, " | ")
+	for _, want := range []string{"Schreibt prs.json", "Führt aus: omamac check prs.json", "Nicht erlaubt: Führt aus: curl example.com"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("steps lack %q: %s", want, all)
+		}
+	}
+	if !strings.Contains(out.String(), "Ich baue das Panel.") {
+		t.Fatalf("output: %q", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "prs.json")); err != nil {
+		t.Fatal("the agent did not work in the panels folder")
+	}
+
+	// a failure the agent reports is the run's error
+	bad := filepath.Join(t.TempDir(), "claude")
+	_ = os.WriteFile(bad, []byte("#!/bin/sh\nread -r msg\necho '{\"type\":\"result\",\"is_error\":true,\"result\":\"Credit balance is too low\"}'\nexit 1\n"), 0o755)
+	if err := runAgentProcess(ctx, agentInfo{agentDefs[0], bad}, dir, bin, "x", nil, false); err == nil || !strings.Contains(err.Error(), "Credit balance") {
+		t.Fatalf("reported failure: %v", err)
+	}
+
+	// other agents: their text, line by line
+	plain := filepath.Join(t.TempDir(), "opencode")
+	_ = os.WriteFile(plain, []byte("#!/bin/sh\necho \"args: $*\"\n"), 0o755)
+	out.Reset()
+	oc := agentInfo{agentDefs[4], plain}
+	if err := runAgentProcess(ctx, oc, dir, bin, "hallo", nil, true); err != nil || !strings.Contains(out.String(), "args: run --continue hallo") {
+		t.Fatalf("opencode: %v %q", err, out.String())
+	}
+}
+
+// The panels an agent wrote are the ones that came in through the folder during its run.
+func TestPanelsWrittenSince(t *testing.T) {
+	app := newTestApp(t)
+	start := time.Now()
+	writePanelFile(t, app.Config.PanelsDir, "from-agent.json", map[string]any{"title": "From agent", "enabled": true})
+	app.reloadPanelFile("from-agent.json")
+	got := app.panelsWrittenSince(start)
+	if len(got) != 1 || got[0].ID != "from-agent" {
+		t.Fatalf("written: %v", got)
+	}
+	if len(app.panelsWrittenSince(time.Now().Add(time.Second))) != 0 {
+		t.Fatal("older changes count")
+	}
+	if env := onlyVariables([]string{"A_TOKEN=1", "B_TOKEN=2", "PATHLIKE"}, []string{"B_TOKEN"}); len(env) != 1 || env[0] != "B_TOKEN=2" {
+		t.Fatalf("only the named variables: %q", env)
 	}
 }

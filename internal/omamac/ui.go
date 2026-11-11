@@ -104,10 +104,12 @@ type App struct {
 	launchSel     int // the chosen row
 	launchList    ui.ListState
 	iconCache     appIconCache
-	launchImages  []string      // images pasted into the launcher, for the agent
-	agents        agentRegistry // the coding agents installed
-	approved      *approvals    // the commands the user allowed (panel_watch.go)
-	showRuns      bool          // the chosen panel's recent runs are unfolded
+	launchImages  []string             // images pasted into the launcher, for the agent
+	agents        agentRegistry        // the coding agents installed
+	approved      *approvals           // the commands the user allowed (panel_watch.go)
+	externalAt    map[string]time.Time // when a panel last came in through the folder
+	agentReply    string               // the answer to a background agent, in its dialog
+	showRuns      bool                 // the chosen panel's recent runs are unfolded
 
 	// Dashboard (view_dashboard.go)
 	tileRender bool                // a tile is being built: its header drags the tile

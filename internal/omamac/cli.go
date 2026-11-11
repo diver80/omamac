@@ -114,7 +114,8 @@ func cliCheck(configPath, file string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "FAILED:", err)
 		return 1
 	}
-	env := a.PanelEnv()
+	// Only the variables the panel names: an agent in the background calls this without asking.
+	env := onlyVariables(a.PanelEnv(), panelVariables(&spec))
 	notes, checkErr := spec.CheckPanelSpec(context.Background(), env...)
 	for _, n := range notes {
 		fmt.Fprintln(stdout, "•", n)
@@ -182,4 +183,19 @@ func maskedTexts(p *PanelSpec) *PanelSpec {
 		r.Left, r.Right, r.Badge = maskSecrets(r.Left), maskSecrets(r.Right), maskSecrets(r.Badge)
 	}
 	return &cp
+}
+
+// onlyVariables keeps the NAME=value entries of env whose NAME is in names.
+func onlyVariables(env, names []string) []string {
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	var out []string
+	for _, kv := range env {
+		if name, _, ok := strings.Cut(kv, "="); ok && want[name] {
+			out = append(out, kv)
+		}
+	}
+	return out
 }

@@ -163,7 +163,7 @@ func (a *App) agentItem(prompt string) launchItem {
 		it.subtitle = T("Öffnet den Dialog im Hauptfenster")
 	} else {
 		it.title = fmt.Sprintf(T("%s fragen: „%s“"), ag.Name, prompt)
-		it.subtitle = fmt.Sprintf(T("Startet im Terminal (%s), im Panel-Ordner"), a.terminal())
+		it.subtitle = T("Arbeitet im Hintergrund im Panel-Ordner – ohne Terminal")
 	}
 	if n := len(a.launchImages); n > 0 {
 		it.subtitle += fmt.Sprintf(T(" · mit %d Bild(ern)"), n)
@@ -395,7 +395,7 @@ func (a *App) renderAgentPill(c *ui.Context, key string) {
 			if ch.agent == nil {
 				label += T(" – Panels im Dialog, mit Bildern")
 			} else {
-				label += T(" – im Terminal")
+				label += T(" – im Hintergrund")
 			}
 			if ch.ID == cur.ID {
 				label = "✓ " + label

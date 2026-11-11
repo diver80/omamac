@@ -36,6 +36,7 @@ type aiRun struct {
 	done     bool
 	result   *aiRunResult
 	cancel   context.CancelFunc
+	agent    *agentInfo // a coding agent's background run (agent_run.go)
 
 	pending atomic.Bool // a repaint is scheduled
 }
@@ -52,19 +53,19 @@ type aiRunResult struct {
 }
 
 type aiResultPanel struct {
-	icon, title, subtitle, kind string
-	refresh                     int
-	command                     string
-	actions                     [][2]string // label, command or URL
-	metrics, rows, htmlBytes    int
-	badge, status               string
-	firstOutput                 string // what the command printed on its first run
-	checkErr                    string
+	id, icon, title, subtitle, kind string
+	refresh                         int
+	command                         string
+	actions                         [][2]string // label, command or URL
+	metrics, rows, htmlBytes        int
+	badge, status                   string
+	firstOutput                     string // what the command printed on its first run
+	checkErr                        string
 }
 
 func summarizePanel(p *PanelSpec, checkErr error) aiResultPanel {
 	r := aiResultPanel{
-		icon: p.Icon, title: p.Title, subtitle: p.Subtitle, kind: "Native",
+		id: p.ID, icon: p.Icon, title: p.Title, subtitle: p.Subtitle, kind: "Native",
 		refresh: p.RefreshSeconds, command: strings.TrimSpace(p.Command),
 		metrics: len(p.Metrics), rows: len(p.Rows), htmlBytes: len(p.HTML),
 		badge: p.BadgeText, status: p.Status,
@@ -92,6 +93,7 @@ type aiRunView struct {
 	elapsed                time.Duration
 	done, canceled         bool
 	result                 *aiRunResult
+	agent                  *agentInfo
 }
 
 func (r *aiRun) snapshot() aiRunView {
@@ -104,7 +106,7 @@ func (r *aiRun) snapshot() aiRunView {
 	return aiRunView{
 		title: r.title, output: r.output.String(), errText: r.errText,
 		steps: append([]aiStep(nil), r.steps...), elapsed: end.Sub(r.started),
-		done: r.done, canceled: r.canceled, result: r.result,
+		done: r.done, canceled: r.canceled, result: r.result, agent: r.agent,
 	}
 }
 
@@ -148,7 +150,12 @@ func (v aiRunView) progress() float64 {
 // startAIRun opens the dialog for a new run and returns the context the AI
 // calls report to. finish must be called when the run ends.
 func (a *App) startAIRun(title string) (context.Context, *aiRun) {
-	ctx, cancel := context.WithTimeout(context.Background(), aiRunTimeout)
+	return a.startAIRunFor(title, aiRunTimeout)
+}
+
+// startAIRunFor is startAIRun for a run that may take up to timeout.
+func (a *App) startAIRunFor(title string, timeout time.Duration) (context.Context, *aiRun) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	r := &aiRun{title: title, started: time.Now(), cancel: cancel}
 	ctx = WithAIProgress(ctx, &AIProgress{
 		Step: func(s string) {
@@ -292,6 +299,9 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 					if !compact {
 						a.renderAIRunOutput(c, v)
 					}
+					if v.agent != nil && v.done { // read the agent's answer, then reply below it
+						a.renderAgentFollowUp(c, v)
+					}
 					end := ui.Column(c.Key("ai-run-end")).Height(1).FillWidth()
 					if !v.done && len(v.output) != a.aiRunSeen {
 						a.aiRunSeen = len(v.output)
@@ -399,6 +409,14 @@ func (a *App) renderAIRunOutput(c *ui.Context, v aiRunView) {
 			ui.Text(c, label).FontSize(11.5).Bold().TextColor(t.TextMuted).Grow(1)
 			a.renderOutputViewSwitch(c, v.output)
 		})
+	}
+	if v.agent != nil { // a coding agent writes prose; its files come through the folder
+		answer = func() { ui.Text(c, strings.TrimSpace(v.output)).FontSize(12.5).FillWidth().Selectable() }
+		if v.done && v.output != "" {
+			header(T("Antwort der KI"))
+			answer()
+			return
+		}
 	}
 	switch {
 	case !v.done && v.output == "":
@@ -614,4 +632,48 @@ func (a *App) pasteImage(imgs *[]string) bool {
 	}
 	a.addImages(imgs, []string{path})
 	return true
+}
+
+// renderAgentFollowUp ends a coding agent's run: where its panels wait, an answer that
+// continues its session, and its session in a terminal.
+func (a *App) renderAgentFollowUp(c *ui.Context, v aiRunView) {
+	t := c.Theme()
+	ag := *v.agent
+	ui.Column(c.Key("agent-follow")).FillWidth().Padding(12, 14).Radius(10).Border(1, t.Border).Gap(8).Children(func() {
+		if v.result != nil {
+			held := 0
+			for _, rp := range v.result.panels {
+				if p := a.findPanel(rp.id); p != nil && a.isHeld(p) {
+					held++
+				}
+			}
+			if held > 0 {
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, fmt.Sprintf(T("%d Panel(s) warten auf deine Freigabe."), held)).FontSize(12).Grow(1).MinWidth(0)
+					if ui.PrimaryButton(c.Key("agent-review"), T("Prüfen")).Clicked() {
+						a.showAIRun = false
+						a.setTab(TabOverview)
+					}
+				})
+			}
+		}
+		ui.Text(c, fmt.Sprintf(T("Antwort an %s"), ag.Name)).FontSize(11.5).Bold().TextColor(t.TextMuted)
+		send := ui.TextArea(c.Key("agent-reply"), &a.agentReply).Height(52).FillWidth().
+			Placeholder(T("z. B. „Zeige nur offene Tickets“ – setzt die Sitzung fort")).Shortcut(ui.Cmd, ui.KeyEnter)
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			if args := continueArgs(ag); args != nil {
+				if ui.Button(c.Key("agent-terminal"), T("Im Terminal fortsetzen")).
+					Tooltip(fmt.Sprintf(T("Öffnet die Sitzung interaktiv in %s"), a.terminal())).Clicked() {
+					a.continueInTerminal(ag)
+				}
+			}
+			ui.Spacer(c)
+			empty := strings.TrimSpace(a.agentReply) == ""
+			if (ui.Button(c.Key("agent-send"), T("Antworten")).Tooltip("⌘↵").Disabled(empty || a.busy).Clicked() || send) && !empty && !a.busy {
+				reply := strings.TrimSpace(a.agentReply)
+				a.agentReply = ""
+				a.runAgentBackground(ag, reply, nil, true)
+			}
+		})
+	})
 }

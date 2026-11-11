@@ -208,7 +208,7 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 func (a *App) renderLauncherSettings(c *ui.Context) {
 	t := c.Theme()
 	section(c, "cfg-launcher", T("Schnellstart & Agenten"),
-		T("Im Schnellstart öffnet ein Name die App, ein Satz geht an die KI. Die OmaMac-KI baut Panels im Dialog – mit Screenshots und Mockups. Ein Coding-Agent startet im Terminal im Panel-Ordner und liest dort AGENTS.md: wie Panels aufgebaut sind und welche Variablen es gibt."),
+		T("Im Schnellstart öffnet ein Name die App, ein Satz geht an die KI. Die OmaMac-KI baut Panels im Dialog – mit Screenshots und Mockups. Ein Coding-Agent arbeitet im Hintergrund im Panel-Ordner, ohne Terminal: Er liest dort AGENTS.md, darf nur Dateien dieses Ordners ändern und omamac check aufrufen. „Im Terminal fortsetzen“ öffnet seine Sitzung interaktiv im gewählten Terminal."),
 		func() {
 			ui.Form(c, func() {
 				ui.Field(c, T("Kürzel"), func() {
