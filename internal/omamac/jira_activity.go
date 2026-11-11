@@ -401,7 +401,7 @@ func (a *App) renderJiraActivityModule(c *ui.Context, p *PanelSpec, onClose func
 	sources := j.sourcesFor(p)
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
+		a.panelHeader(ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8), p).Children(func() {
 			ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
 			if ui.Button(c.Key("act-refresh"), "↻").Tooltip(T("Activity Streams aller Instanzen neu laden")).Clicked() {

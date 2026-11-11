@@ -30,12 +30,13 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 
 	ui.Column(c).Fill().Padding(14).Gap(10).Children(func() {
 		// Header: what it is and how it is doing
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
+		a.panelHeader(ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8), p).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().SingleLine()
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					statusDot(c, p.Status)
-					ui.Text(c, panelStatusText(p)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					status, text := a.panelStatusLine(p)
+					statusDot(c, status)
+					ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
 			})
 			if ui.Button(c.Key("pop-ref-"+p.ID), "↻").Tooltip(T("Jetzt aktualisieren")).Clicked() {

@@ -93,10 +93,14 @@ func (a *App) launcherItems(query string) []launchItem {
 		})
 	}
 	all = append(all,
+		launchItem{kind: launchOmaMac, key: "omamac-dashboard", title: "Dashboard", glyph: "▦", run: func() {
+			a.setTab(TabDashboard)
+			a.showStudio()
+		}},
 		launchItem{kind: launchOmaMac, key: "omamac-main", title: T("Hauptfenster öffnen"), glyph: "⌘", run: a.showStudio},
 		launchItem{kind: launchOmaMac, key: "omamac-new", title: T("Neues Panel …"), glyph: "+", run: func() { a.openCreate("") }},
 		launchItem{kind: launchOmaMac, key: "omamac-settings", title: T("Einstellungen"), glyph: "⚙", run: func() {
-			a.activeTab = TabSettings
+			a.setTab(TabSettings)
 			a.showStudio()
 		}},
 	)
@@ -402,7 +406,7 @@ func (a *App) renderAgentPill(c *ui.Context, key string) {
 		}
 		m.Separator()
 		if m.Item(T("Einstellungen …")).Chosen() {
-			a.activeTab = TabSettings
+			a.setTab(TabSettings)
 			a.showStudio()
 		}
 	})

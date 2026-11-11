@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0
+
+- **Dashboard:** The main window opens on a dashboard. All panels are tiles in a grid, with the launcher's bar below them: a name opens an app, a sentence goes to the agent, and images can be pasted or dropped.
+  - "Full screen" puts the dashboard on a Space of its own, a swipe away with three fingers. Real macOS desktop widgets would need a separate Swift extension.
+  - Drag a tile by its header to reorder; right-click it to choose its size (small, medium, tall, wide), to refresh it or to remove it.
+  - HTML panels show their page in the tile.
+  - Panels that are only on the dashboard refresh while it is on screen.
+- **Third switch "Dashboard"** in the panel list, next to "Menu bar" and "Widget". It is on for every panel at first.
+- **Collapsible sidebar:** ☰ or ⌘\ collapses the sidebar to symbols. On the dashboard it starts collapsed.
+- The launcher lists "Dashboard"; AGENTS.md tells agents about `dashboard_size`.
+
 ## 1.10.0
 
 - **Agents in the launcher:** As in Omalauncher, a name opens the app and a sentence goes to an agent. The button next to the search field (or ⇥) chooses where sentences go:

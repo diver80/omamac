@@ -56,6 +56,12 @@ type Config struct {
 	LauncherAgent  string `json:"launcher_agent,omitempty"`
 	Terminal       string `json:"terminal,omitempty"`
 	LauncherWidget bool   `json:"launcher_widget,omitempty"`
+
+	// DashboardOrder is the order of the dashboard's tiles (panel IDs; panels not in it follow).
+	DashboardOrder []string `json:"dashboard_order,omitempty"`
+	// The main window's sidebar: collapsed to symbols in the other views, open on the dashboard.
+	SidebarCollapsed     bool `json:"sidebar_collapsed,omitempty"`
+	DashboardSidebarOpen bool `json:"dashboard_sidebar_open,omitempty"`
 	// Language is "de" or "en"; empty follows the language of macOS.
 	Language            string `json:"language,omitempty"`
 	PanelsDir           string `json:"panels_dir"`

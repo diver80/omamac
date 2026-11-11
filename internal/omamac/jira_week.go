@@ -278,7 +278,7 @@ func (a *App) renderJiraWeekModule(c *ui.Context, p *PanelSpec, onClose func()) 
 	}
 
 	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).DragWindow().Children(func() {
+		a.panelHeader(ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8), p).Children(func() {
 			ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().Grow(1).MinWidth(120).SingleLine()
 			pillBadge(c, p.BadgeText, sBg, sFg)
 			if ui.Button(c.Key("wk-refresh"), "↻").Tooltip(T("Woche neu laden")).Clicked() {

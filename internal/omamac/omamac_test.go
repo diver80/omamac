@@ -142,12 +142,15 @@ func TestUIRenderAllViews(t *testing.T) {
 		t.Fatalf("NewApp failed: %v", err)
 	}
 
-	if app.activeTab != TabOverview {
-		t.Fatalf("expected default tab to be TabOverview, got %d", app.activeTab)
+	if app.activeTab != TabDashboard {
+		t.Fatalf("the main window starts with %d, not the dashboard", app.activeTab)
 	}
 
-	// Render the main window's three views
-	for _, tab := range []StudioTab{TabOverview, TabStore, TabSettings} {
+	// Render the main window's views, with the sidebar open and collapsed
+	for _, tab := range []StudioTab{TabDashboard, TabOverview, TabStore, TabSettings, TabDashboard, TabOverview} {
+		if tab == TabDashboard && app.activeTab == TabOverview {
+			app.toggleSidebar() // the second round: open on the dashboard, collapsed elsewhere
+		}
 		app.activeTab = tab
 		img := ui.Render(app.RenderStudioView, 1280, 800, 1.0)
 		if img == nil || img.Bounds().Dx() != 1280 {
@@ -259,6 +262,11 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.showHelpModal = false
 	app.activeTab = TabOverview
 	savePNG("01-panels.png", app.RenderStudioView, 1320, 820)
+
+	// The dashboard: the panels as tiles, the bar for apps and the AI below
+	app.activeTab = TabDashboard
+	savePNG("16-dashboard.png", app.RenderStudioView, 1320, 900)
+	app.activeTab = TabOverview
 
 	app.showCreate = true
 	app.createImages = []string{filepath.Join("..", "..", "resources", "icon.png")}
@@ -596,6 +604,7 @@ func TestDeletePanelFlow(t *testing.T) {
 	}
 	const id = "04-mydealz-3d"
 	app.selectPanel(id)
+	app.activeTab = TabOverview
 	tt := ui.NewTester(app.RenderStudioView, 1320, 820)
 
 	tt.Key(ui.Cmd, ui.KeyBackspace)

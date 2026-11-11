@@ -304,7 +304,7 @@ func (a *App) onNotificationClick(id string) {
 		if a.findPanel(panelID) != nil {
 			a.selectPanel(panelID)
 		}
-		a.activeTab = TabOverview
+		a.setTab(TabOverview)
 		a.showStudio()
 	})
 }

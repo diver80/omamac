@@ -12,6 +12,7 @@ import (
 const (
 	trayColWidth   = 84
 	widgetColWidth = 64
+	dashColWidth   = 74
 )
 
 // renderTabOverview is the main view: the panels on the left, one line each with
@@ -22,7 +23,7 @@ func (a *App) renderTabOverview(c *ui.Context) {
 	ui.Row(c).Grow(1).MinHeight(0).FillWidth().Padding(20).Gap(20).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(14).Children(func() {
 			pageHeader(c, "Panels",
-				fmt.Sprintf(T("%d von %d in der Menüleiste · %d als Widget"), enabledCnt, len(a.panels), floatingCnt),
+				fmt.Sprintf(T("%d von %d in der Menüleiste · %d als Widget · %d auf dem Dashboard"), enabledCnt, len(a.panels), floatingCnt, len(a.dashboardPanels())),
 				func() {
 					ui.Button(c.Key("ov-more"), "⋯").Tooltip(T("Weitere Aktionen")).Menu(func(m *ui.Menu) {
 						if m.Item(T("Alle in der Menüleiste zeigen")).Chosen() {
@@ -73,6 +74,9 @@ func (a *App) renderPanelList(c *ui.Context, prefix string, selectable bool) {
 			})
 			fixedCell(c, widgetColWidth, func() {
 				ui.Text(c, "Widget").FontSize(10.5).TextColor(t.TextMuted)
+			})
+			fixedCell(c, dashColWidth, func() {
+				ui.Text(c, "Dashboard").FontSize(10.5).TextColor(t.TextMuted)
 			})
 		})
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
@@ -125,6 +129,17 @@ func (a *App) renderPanelRow(c *ui.Context, prefix string, p *PanelSpec, selecta
 				msg := T("Widget „") + p.Title + T("“ ausgeblendet")
 				if p.PinnedFloating {
 					msg = T("„") + p.Title + T("“ als Widget auf dem Desktop")
+				}
+				a.persistPanelToggle(p, msg)
+			}
+		})
+		fixedCell(c, dashColWidth, func() {
+			on := !p.DashboardOff
+			if ui.Switch(c.Key(prefix+"-sw-dash-"+p.ID), &on).Label("Dashboard").Changed() {
+				p.DashboardOff = !on
+				msg := fmt.Sprintf(T("„%s“ vom Dashboard genommen"), p.Title)
+				if on {
+					msg = fmt.Sprintf(T("„%s“ auf dem Dashboard"), p.Title)
 				}
 				a.persistPanelToggle(p, msg)
 			}

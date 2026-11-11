@@ -90,6 +90,8 @@ type PanelSpec struct {
 	LastCommandOut string        `json:"last_command_out,omitempty"`
 	LastCheckMsg   string        `json:"last_check_msg,omitempty"` // Output from omamac-check (owl-check equivalent)
 	Config         *ModuleConfig `json:"config,omitempty"`         // settings of a built-in module (module_config.go)
+	DashboardOff   bool          `json:"dashboard_off,omitempty"`  // not a tile on the dashboard (the third switch)
+	DashboardSize  string        `json:"dashboard_size,omitempty"` // its tile: "small", "medium", "tall" or "wide" ("" chooses)
 
 	// LastRunError says why the last run of Command failed ("" when it worked); the panel
 	// then shows as failed. Not saved: the next run tells again.

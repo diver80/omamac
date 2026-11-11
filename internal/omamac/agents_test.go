@@ -334,3 +334,69 @@ func TestTerminalCommand(t *testing.T) {
 		t.Fatalf("the AppleScript does not compile: %v %s", err, out)
 	}
 }
+
+// The dashboard: tiles in rows of six columns, in the order the user dragged them, and
+// only the panels switched on for it.
+func TestDashboard(t *testing.T) {
+	app := newTestApp(t)
+	panels := app.dashboardPanels()
+	if len(panels) != len(app.panels) {
+		t.Fatalf("%d of %d panels on the dashboard", len(panels), len(app.panels))
+	}
+	week := app.findPanel("00-jira-week")
+	if week == nil || tileSize(week).ID != "wide" {
+		t.Fatalf("the week board is not a wide tile")
+	}
+	n := 0
+	for _, row := range packTiles(panels) {
+		cols := 0
+		for _, p := range row {
+			cols += tileSize(p).Cols
+			n++
+		}
+		if cols > dashColumns {
+			t.Fatalf("a row of %d columns", cols)
+		}
+	}
+	if n != len(panels) {
+		t.Fatalf("%d of %d tiles placed", n, len(panels))
+	}
+	// medium, wide, medium: the second medium fills the first row's gap
+	m1, w, m2 := &PanelSpec{ID: "m1"}, &PanelSpec{ID: "w", DashboardSize: "wide"}, &PanelSpec{ID: "m2"}
+	if rows := packTiles([]*PanelSpec{m1, w, m2}); len(rows) != 2 || len(rows[0]) != 2 || rows[0][1] != m2 || rows[1][0] != w {
+		t.Fatalf("packing: %v", rows)
+	}
+
+	last := panels[len(panels)-1]
+	app.moveTile(last.ID, panels[0].ID)
+	if got := app.dashboardPanels(); got[0] != last {
+		t.Fatalf("the moved tile is at %q", got[0].ID)
+	}
+	if again, _ := LoadConfig(app.ConfigPath); len(again.DashboardOrder) == 0 || again.DashboardOrder[0] != last.ID {
+		t.Fatal("the order was not saved")
+	}
+
+	panels[0].DashboardOff = true
+	for _, p := range app.dashboardPanels() {
+		if p == panels[0] {
+			t.Fatal("a panel switched off for the dashboard is a tile")
+		}
+	}
+	app.setTileSize(last, "small")
+	if tileSize(last).Cols != 2 {
+		t.Fatal("the size was not taken")
+	}
+
+	// the bar under the tiles: a sentence goes to OmaMac's AI
+	app.dashQuery = "zeige mir die Wetterlage für Berlin"
+	items := app.launcherItems(app.dashQuery)
+	if items[0].kind != launchAI {
+		t.Fatalf("the bar's first suggestion is %q", items[0].title)
+	}
+	if img := ui.Render(app.RenderStudioView, 1320, 900, 1); img == nil {
+		t.Fatal("the dashboard does not render")
+	}
+	if app.sidebarCollapsed() != true {
+		t.Fatal("the sidebar is open on the dashboard by default")
+	}
+}

@@ -19,7 +19,7 @@ func (a *App) openCreate(prompt string) {
 	if prompt != "" {
 		a.prompt1Text = prompt
 	}
-	a.activeTab = TabOverview
+	a.setTab(TabOverview)
 	a.showCreate = true
 	if a.studioWin != nil {
 		a.studioWin.Show()

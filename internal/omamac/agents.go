@@ -443,7 +443,8 @@ here, so changes to it are lost.
 - `+"`type: \"html\"`"+` panels have a self-contained page in `+"`html`"+`; it gets the panel with its
   data in `+"`window.onOmaMacUpdate = function (panel) { … }`"+`.
 - `+"`requires_brew`"+`: the Homebrew tools the command needs (`+"`omamac check`"+` looks for them).
-- Leave these to OmaMac: `+"`enabled`, `pinned_floating`, `menubar_text`, `prompt_history`, `last_*`"+`.
+- `+"`dashboard_size`"+`: the panel's tile on OmaMac's dashboard, `+"`small`, `medium`, `tall` or `wide`"+`.
+- Leave these to OmaMac: `+"`enabled`, `pinned_floating`, `dashboard_off`, `menubar_text`, `prompt_history`, `last_*`"+`.
 - Files with `+"`builtin_kind`"+` are OmaMac's own modules (Jira, Atlassian status): don't change them.
 
 ## Variables

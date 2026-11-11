@@ -19,9 +19,10 @@ import (
 type StudioTab int
 
 const (
-	TabOverview StudioTab = iota // Panels: switches, preview, AI refine (default)
-	TabStore                     // Vorlagen: ready-made panels
-	TabSettings                  // Einstellungen: AI provider, vault, general
+	TabOverview  StudioTab = iota // Panels: switches, preview, AI refine (default)
+	TabStore                      // Vorlagen: ready-made panels
+	TabSettings                   // Einstellungen: AI provider, vault, general
+	TabDashboard                  // Dashboard: the panels as tiles, the launcher's bar (the start)
 )
 
 type panelRuntime struct {
@@ -107,6 +108,12 @@ type App struct {
 	agents        agentRegistry // the coding agents installed
 	approved      *approvals    // the commands the user allowed (panel_watch.go)
 	showRuns      bool          // the chosen panel's recent runs are unfolded
+
+	// Dashboard (view_dashboard.go)
+	tileRender bool                // a tile is being built: its header drags the tile
+	dashWebs   map[string]*dashWeb // the web views of HTML tiles
+	dashQuery  string              // the bar under the tiles
+	dashSel    int
 
 	// Settings & Central Credentials Vault draft state
 	providerIdx   int // 0 = Gemini, 1 = Claude
@@ -197,7 +204,7 @@ func newApp(configPath string, cli bool) (*App, error) {
 		AI:            aiEngine,
 		Jira:          jira,
 		AgyStatus:     InspectAntigravityAuth(cfg),
-		activeTab:     TabOverview,
+		activeTab:     TabDashboard,
 		panels:        panels,
 		runtimes:      make(map[string]*panelRuntime),
 		apps:          DiscoverMacApps(),
@@ -507,6 +514,8 @@ func (a *App) syncAllPanelRuntimes() {
 		}
 	}
 
+	a.dropDashWebs()
+
 	// Clean up deleted panels
 	for id, rt := range a.runtimes {
 		if !activeIDs[id] {
@@ -638,6 +647,9 @@ func (a *App) pushHTMLPanelUpdate(rt *panelRuntime) {
 	}
 	payload, _ := json.Marshal(rt.spec)
 	js := fmt.Sprintf("if (window.onOmaMacUpdate) { window.onOmaMacUpdate(%s); }", string(payload))
+	if w, ok := a.dashWebs[rt.spec.ID]; ok && w.view.Page() != nil {
+		_, _ = w.view.Page().Eval(js)
+	}
 	if rt.flyout != nil && !rt.flyout.IsDestroyed() && rt.flyout.Page() != nil {
 		_, _ = rt.flyout.Page().Eval(js)
 	}
@@ -665,8 +677,9 @@ func (a *App) refreshDuePanels(force bool) {
 	var jobs []job
 	a.updateUISync(func() {
 		now := time.Now()
+		dash := a.dashboardShown()
 		for _, p := range a.panels {
-			if !p.Enabled && !p.PinnedFloating {
+			if !p.Enabled && !p.PinnedFloating && (!dash || p.DashboardOff) {
 				continue
 			}
 			rt := a.runtimes[p.ID]

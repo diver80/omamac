@@ -198,7 +198,7 @@ func (a *App) openImportData(data []byte, source string) {
 	a.importBundle, a.importSource = b, source
 	a.importShowCmd = map[int]bool{}
 	a.showImport = true
-	a.activeTab = TabOverview
+	a.setTab(TabOverview)
 	if a.studioWin != nil {
 		a.studioWin.Show()
 		a.studioWin.Focus()

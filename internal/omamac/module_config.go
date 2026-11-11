@@ -189,7 +189,7 @@ func (a *App) renderModuleConfig(c *ui.Context, p *PanelSpec) {
 
 // openJiraSettings shows the main window's settings, where the Jira instances are managed.
 func (a *App) openJiraSettings() {
-	a.activeTab = TabSettings
+	a.setTab(TabSettings)
 	if a.studioWin != nil {
 		a.studioWin.Show()
 		a.studioWin.Focus()

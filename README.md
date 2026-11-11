@@ -8,7 +8,8 @@ The interface is available in English and German: it follows the macOS language,
 
 ## Features
 
-- **Panels for the menu bar and the desktop:** Every panel has two switches – "Menu bar" shows it in the top-right menu bar, "Widget" floats it on the desktop. The overview shows the selected panel's live preview, refresh interval and actions on the right.
+- **Dashboard:** The main window opens on all panels as tiles, with the launcher's bar below them, like a home screen. In full screen it is a Space of its own, a swipe away. Drag a tile's header to reorder, right-click for its size. The sidebar collapses to symbols (☰, ⌘\).
+- **Panels for the menu bar, the desktop and the dashboard:** Every panel has three switches: "Menu bar" shows it in the top-right menu bar, "Widget" floats it on the desktop, "Dashboard" makes it a tile. The "Panels" view shows the selected panel's live preview, refresh interval and actions on the right.
 - **Create and change panels with a sentence:** "+ New panel" describes a panel in one sentence; the AI (Gemini via Antigravity login or API key, or Claude) builds the panel and its data script. Changes work the same way, right next to the panel. Attach screenshots or mockups (button, drag & drop or ⌘V) and watch the AI's answer stream in while it works.
 - **No AI at runtime:** Afterwards, panels refresh locally with their shell/Python script – no AI calls, no tokens.
 - **Launcher (`⌥ Space`):** One search field for apps, panels and window layouts; driven with ↑↓ and ↵. As in [Omalauncher](https://github.com/SimonSchubert/omalauncher), a name opens what it names and a sentence goes to an agent:
@@ -23,6 +24,8 @@ The interface is available in English and German: it follows the macOS language,
   Two more work on the same Jira instances: **Jira Activity**, the activity stream of all sites like the Data Center gadget (your tickets or everything, optionally per project), and **Jira Week**, a Kanban board with a column per day that pages week by week, by last change, resolution or due date. Built-in modules keep their settings in the panel (which instances, JQL or projects per instance) and can be duplicated, e.g. one week board per customer; the Jira instances themselves are managed under Settings.
 - **Log:** `~/Library/Logs/OmaMac/omamac.log` records failed panel scripts, AI calls, Jira errors and agent starts, with vault values and tokens masked. Each panel lists its last runs, and a failing script turns its panel red.
 - **Automatic updates** from the GitHub releases.
+
+![Dashboard](docs/omamac-screenshots/16-dashboard.png)
 
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
