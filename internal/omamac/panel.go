@@ -521,7 +521,36 @@ func BuiltinSystemPanels() []*PanelSpec {
 			Height:         560,
 			LastUpdated:    now,
 		},
+		// Added in 1.13: on the dashboard where Claude Code is set up, not in the menu bar.
+		{
+			ID:             "00-agent-usage",
+			Title:          T("Agenten-Limits"),
+			Subtitle:       T("Wie viel von Session und Woche deines Claude-Code-Abos verbraucht ist"),
+			Kind:           "widget",
+			GridSize:       "3x2",
+			Icon:           "🤖",
+			BadgeText:      "Claude …",
+			Status:         "info",
+			Type:           PanelTypeNative,
+			IsBuiltin:      true,
+			BuiltinKind:    BuiltinAgentUsage,
+			RefreshSeconds: 300,
+			Width:          420,
+			Height:         250,
+			DashboardOff:   !claudeCodeSetUp(),
+			LastUpdated:    now,
+		},
 	}
+}
+
+// claudeCodeSetUp reports whether Claude Code has been used here (it keeps ~/.claude).
+func claudeCodeSetUp() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(home, ".claude"))
+	return err == nil
 }
 
 // DefaultStarterPanels returns the pre-delivered BuiltinSystemPanels plus the AI-customizable starter panels.

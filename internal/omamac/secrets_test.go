@@ -1,6 +1,7 @@
 package omamac
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -54,6 +55,7 @@ func TestMain(m *testing.M) {
 	useMemSecrets(nil) // the default for every test
 	setLogPath("")     // tests never write to the user's log
 	legacyVaultItems = &memSecrets{items: map[string][]byte{}}
+	readClaudeLogin = func(context.Context) (*claudeLogin, error) { return nil, errNoClaudeLogin } // never the real keychain
 	os.Exit(m.Run())
 }
 

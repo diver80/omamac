@@ -22,6 +22,7 @@ The interface is available in English and German: it follows the macOS language,
 - **Vault (macOS Keychain):** Panels receive search terms and tokens as `$VARIABLE`; the AI only ever sees the name. The Jira Quick-Access instances add `$JIRA_<NAME>_URL`, `_EMAIL` and `_API_TOKEN` automatically.
 - **Built-in modules:** Jira Quick-Access (JQL counters, board, ticket viewer; imports the instances from `~/.jira-quick-access/config.json`) and Atlassian Status.
   Two more work on the same Jira instances: **Jira Activity**, the activity stream of all sites like the Data Center gadget (your tickets or everything, optionally per project), and **Jira Week**, a Kanban board with a column per day that pages week by week, by last change, resolution or due date. Built-in modules keep their settings in the panel (which instances, JQL or projects per instance) and can be duplicated, e.g. one week board per customer; the Jira instances themselves are managed under Settings.
+- **Agent limits:** A built-in module shows how much of your Claude Code plan's 5-hour session and week is used, as `/usage` does, with the time until each resets and a mark where an even pace would be. It reads Claude Code's login from the keychain and sends it only to Anthropic.
 - **Log:** `~/Library/Logs/OmaMac/omamac.log` records failed panel scripts, AI calls, Jira errors and agent starts, with vault values and tokens masked. Each panel lists its last runs, and a failing script turns its panel red.
 - **Automatic updates** from the GitHub releases.
 
@@ -30,6 +31,8 @@ The interface is available in English and German: it follows the macOS language,
 ![Panels](docs/omamac-screenshots/01-panels.png)
 
 ![Launcher](docs/omamac-screenshots/05-schnellstart.png)
+
+![Agent limits](docs/omamac-screenshots/18-agenten-limits.png)
 
 ## Installation
 

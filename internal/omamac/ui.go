@@ -110,6 +110,7 @@ type App struct {
 	externalAt    map[string]time.Time // when a panel last came in through the folder
 	agentReply    string               // the answer to a background agent, in its dialog
 	showRuns      bool                 // the chosen panel's recent runs are unfolded
+	usage         usageState           // the agents' plan limits (agent_usage.go)
 
 	// Dashboard (view_dashboard.go)
 	tileRender bool                // a tile is being built: its header drags the tile
@@ -744,6 +745,8 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 		if a.Jira != nil {
 			a.Jira.RefreshWeekPanel(ctx, p)
 		}
+	case BuiltinAgentUsage:
+		a.refreshAgentUsage(ctx, p)
 	default:
 		if a.isHeld(p) {
 			return // its command waits for the user's OK (panel_watch.go)

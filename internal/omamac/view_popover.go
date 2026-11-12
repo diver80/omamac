@@ -25,6 +25,9 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 	case BuiltinJiraWeek:
 		a.renderJiraWeekModule(c, p, onClose)
 		return
+	case BuiltinAgentUsage:
+		a.renderAgentUsageModule(c, p, onClose)
+		return
 	}
 	t := c.Theme()
 

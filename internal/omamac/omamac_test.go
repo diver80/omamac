@@ -263,6 +263,20 @@ func TestGenerateScreenshots(t *testing.T) {
 	app.activeTab = TabOverview
 	savePNG("01-panels.png", app.RenderStudioView, 1320, 820)
 
+	// The agents' plan limits, as Claude Code's /usage shows them
+	usage := app.findPanel("00-agent-usage")
+	if usage == nil {
+		t.Fatal("no agent limits panel")
+	}
+	usage.DashboardOff = false
+	now := time.Now()
+	app.setClaudeUsage(agentUsage{Loaded: true, Plan: "Team", At: now, Limits: []usageLimit{
+		{Label: T("Session"), Percent: 31, ResetsAt: now.Add(2*time.Hour + 27*time.Minute), Window: sessionWindow},
+		{Label: T("Woche"), Percent: 59, ResetsAt: now.Add(87*time.Hour + 20*time.Minute), Window: weekWindow},
+		{Label: T("Woche") + " · Opus", Percent: 37, ResetsAt: now.Add(87*time.Hour + 20*time.Minute), Window: weekWindow},
+	}})
+	usage.Status, usage.BadgeText = usageStatus(app.claudeUsage())
+
 	// The dashboard: the panels as tiles, the bar for apps and the AI below
 	app.activeTab = TabDashboard
 	savePNG("16-dashboard.png", app.RenderStudioView, 1320, 900)
@@ -363,6 +377,9 @@ func TestGenerateScreenshots(t *testing.T) {
 		app.launcherQuery = "Make a panel with my open GitHub pull requests"
 	}
 	savePNG("14-agent.png", app.RenderWalPanelView, 680, 480)
+	savePNG("18-agenten-limits.png", func(c *ui.Context) {
+		ui.Column(c).Fill().Background(c.Theme().Surface).Children(func() { app.renderNativePanelPopover(c, usage, nil, nil) })
+	}, 440, 230)
 
 	// A coding agent's background run in the "KI arbeitet" dialog
 	agentRun := &aiRun{title: "Claude Code: " + app.launcherQuery, started: time.Now().Add(-48 * time.Second), cancel: func() {}}

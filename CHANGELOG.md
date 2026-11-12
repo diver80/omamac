@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.0
+
+- **Agent limits:** A new built-in module shows the limits of your Claude Code plan, as `/usage` in Claude Code does: the 5-hour session, the week and a model's own week. Each has a bar, the percent used and the time until it resets; a mark on the bar shows where an even pace would be.
+  - It reads Claude Code's login from the keychain with the `security` tool (no prompt) and sends it only to Anthropic. The token is not stored or logged.
+  - When the login has expired, the last numbers stay and the module says to start Claude Code once.
+  - It is a dashboard tile on Macs where Claude Code is set up. Switched on for the menu bar it shows "31 % · 59 %"; it can also float on the desktop as a widget.
+  - `>_` opens Claude Code in the terminal.
+
 ## 1.12.0
 
 - **Coding agents run in the background, without a terminal:** Claude Code, Codex, Gemini CLI, Antigravity or opencode now work in OmaMac itself, in the panels folder, using each agent's non-interactive mode. This works on every Mac, with no terminal app and no AppleScript permission.

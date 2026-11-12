@@ -289,21 +289,29 @@ func describeTool(name string, input json.RawMessage) string {
 
 // continueInTerminal opens the agent's last session in this folder in a terminal.
 func (a *App) continueInTerminal(ag agentInfo) {
+	a.agentInTerminal(ag, continueArgs(ag), func() { a.showAIRun = false })
+}
+
+// agentInTerminal starts ag with args in a terminal, in the panels folder; opened runs
+// (on the main thread) once the terminal has it.
+func (a *App) agentInTerminal(ag agentInfo, args []string, opened func()) {
 	if err := a.writeAgentWorkspace(); err != nil {
 		a.toast("⚠️ " + err.Error())
 		return
 	}
 	term := a.terminal()
 	go func() {
-		err := openInTerminal(ag, term, a.Config.PanelsDir, a.cliBinDir(), continueArgs(ag))
+		err := openInTerminal(ag, term, a.Config.PanelsDir, a.cliBinDir(), args)
 		a.updateUI(func() {
 			if err != nil {
 				logf("agent", "%s did not open in %s: %v", ag.Name, term, err)
 				a.toast("⚠️ " + fmt.Sprintf(T("%s ließ sich nicht starten: %v"), ag.Name, err))
 				return
 			}
-			logf("agent", "%s continued in %s", ag.Name, term)
-			a.showAIRun = false
+			logf("agent", "%s opened in %s (%s)", ag.Name, term, strings.Join(args, " "))
+			if opened != nil {
+				opened()
+			}
 		})
 	}()
 }

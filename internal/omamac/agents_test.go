@@ -341,7 +341,10 @@ func TestTerminalCommand(t *testing.T) {
 func TestDashboard(t *testing.T) {
 	app := newTestApp(t)
 	panels := app.dashboardPanels()
-	if len(panels) != len(app.panels) {
+	if usage := app.findPanel("00-agent-usage"); usage == nil || !usage.DashboardOff {
+		t.Fatal("the agent limits are on the dashboard where Claude Code was never set up")
+	}
+	if len(panels) != len(app.panels)-1 {
 		t.Fatalf("%d of %d panels on the dashboard", len(panels), len(app.panels))
 	}
 	week := app.findPanel("00-jira-week")

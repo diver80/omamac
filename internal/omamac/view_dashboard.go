@@ -35,8 +35,11 @@ func tileSize(p *PanelSpec) dashSize {
 	id := p.DashboardSize
 	if id == "" {
 		id = "medium"
-		if p.BuiltinKind == BuiltinJiraWeek {
+		switch p.BuiltinKind {
+		case BuiltinJiraWeek:
 			id = "wide"
+		case BuiltinAgentUsage:
+			id = "small"
 		}
 	}
 	for _, s := range dashSizes {
