@@ -49,7 +49,11 @@ go test ./...
 OMAMAC_SCREENSHOTS=1 go test ./internal/omamac -run TestGenerateScreenshots   # refresh the screenshots in docs/
 go run ./cmd/omamac                                   # development run (no auto-update)
 go tool mygo build -platform darwin/universal         # OmaMac.app + DMG in build.noindex/darwin-universal/ (.noindex: kept out of Spotlight/Launchpad)
+./scripts/build.sh                                    # local builds for macOS, Linux and Windows (amd64 + arm64) in build.noindex/<os>-<arch>/
+./scripts/build.sh mac linux                          # only some platforms; -t runs the tests first, -o sets the output folder, -h explains
 ```
+
+`build.sh` publishes nothing. MyGo needs no cgo, so the Linux and Windows apps cross-compile on the Mac. They get a .deb, a .tar.gz with `install.sh` and a PKGBUILD, or an `OmaMac.exe` (plus an installer when NSIS is installed: `brew install makensis`). OmaMac is still made for macOS: on Linux and Windows, everything that relies on the Keychain, AppleScript or `open` does not work yet.
 
 ## Release
 
