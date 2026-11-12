@@ -267,13 +267,13 @@ func (a *App) renderLauncherSettings(c *ui.Context) {
 					})
 				})
 				if goos == "linux" {
-					ui.Field(c, "Waybar", func() {
+					ui.Field(c, T("Obere Leiste"), func() {
 						ui.Column(c).Gap(4).Children(func() {
 							on := a.Config.Waybar != "off"
 							if ui.Switch(c.Key("cfg-waybar"), &on).Changed() {
-								a.setWaybar(on)
+								a.setBar(on)
 							}
-							ui.Text(c, T("Die Einträge der Menüleiste als Module in Waybar, mit ihrem Text: ein Klick öffnet das Panel. Die Konfiguration wird vorher gesichert.")).
+							ui.Text(c, T("Die Einträge der Menüleiste als Module in Omarchys Leiste (oder Waybar), mit ihrem Text: ein Klick öffnet das Panel. Die Konfiguration wird vorher gesichert.")).
 								FontSize(11.5).TextColor(t.TextMuted)
 						})
 					})

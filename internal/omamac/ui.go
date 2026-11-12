@@ -64,6 +64,8 @@ type App struct {
 	// Linux: what bar.json holds, and which of Waybar's modules run (waybar.go).
 	barWritten []byte
 	barLive    barLive
+	barModules int       // Omarchy's bar: the menu bar items it has modules for (-1: not set up)
+	barSyncing bool      // their update runs
 	desktop    bool      // StartDesktopServices ran: trays and windows may be created
 	walBlurAt  time.Time // when the launcher last hid because it lost the focus
 
@@ -393,12 +395,14 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 
 	// 4. Mount all enabled status panels into the macOS menu bar (and floating windows if pinned)
 	a.syncAllPanelRuntimes()
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { a.removeTrays() }) // while the event loop still runs
 	mygo.App.OnQuit(removeBarState)
 
 	// 5. Start background ticker to refresh panel data commands
 	go a.backgroundRefreshLoop()
 	go a.watchBarSlots()
-	go a.autoWaybar(a.Config.Waybar)
+	a.barModules = -1
+	go a.autoBar(a.Config.Waybar, min(len(a.barPanels()), barSlots))
 }
 
 // syncMainTray shows OmaMac's own menu bar item, unless its Waybar module does (Linux).
@@ -570,6 +574,7 @@ func (a *App) syncAllPanelRuntimes() {
 		}
 	}
 	a.writeBarState()
+	a.syncOmarchyBar()
 }
 
 func (a *App) togglePanelFlyout(panelID string) {

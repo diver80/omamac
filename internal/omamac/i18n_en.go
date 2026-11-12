@@ -204,8 +204,9 @@ var enMessages = map[string]string{
 	// Launcher
 	"OmaMac Schnellstart":                   "OmaMac Launcher",
 	"OmaMac – Übersicht & Wal-Panel öffnen": "OmaMac – open the overview & launcher",
-	"OmaMac zeigt seine Menüleisten-Einträge jetzt in Waybar (abschalten: Einstellungen)":                                                    "OmaMac now shows its menu bar items in Waybar (switch off: Settings)",
-	"Die Einträge der Menüleiste als Module in Waybar, mit ihrem Text: ein Klick öffnet das Panel. Die Konfiguration wird vorher gesichert.": "The menu bar items as Waybar modules, with their text: a click opens the panel. The configuration is backed up first.",
+	"OmaMac zeigt seine Menüleisten-Einträge jetzt in der oberen Leiste (abschalten: Einstellungen)": "OmaMac now shows its menu bar items in the top bar (switch off: Settings)",
+	"Obere Leiste": "Top bar",
+	"Die Einträge der Menüleiste als Module in Omarchys Leiste (oder Waybar), mit ihrem Text: ein Klick öffnet das Panel. Die Konfiguration wird vorher gesichert.": "The menu bar items as modules on Omarchy's bar (or Waybar), with their text: a click opens the panel. The configuration is backed up first.",
 	"OmaMac starten":                    "Start OmaMac",
 	"Aktives Fenster anordnen":          "Arrange the active window",
 	"Links 50 %":                        "Left 50 %",

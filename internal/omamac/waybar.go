@@ -38,8 +38,20 @@ func barDir() string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("omamac-%d", os.Getuid()))
 }
 
-func barStatePath() string       { return filepath.Join(barDir(), "bar.json") }
-func barPidPath(slot int) string { return filepath.Join(barDir(), fmt.Sprintf("slot-%d.pid", slot)) }
+func barStatePath() string        { return filepath.Join(barDir(), "bar.json") }
+func barSeenPath(slot int) string { return filepath.Join(barDir(), fmt.Sprintf("slot-%d.seen", slot)) }
+
+// touchBarSlot tells the app that slot's module shows on the bar: Waybar's runs all the
+// time and touches it every second, Omarchy's prints every 3 seconds.
+func touchBarSlot(slot int) {
+	path, now := barSeenPath(slot), time.Now()
+	if os.Chtimes(path, now, now) == nil {
+		return
+	}
+	if os.MkdirAll(barDir(), 0o700) == nil {
+		_ = os.WriteFile(path, nil, 0o600)
+	}
+}
 
 // barItem is what a module shows, in the JSON of Waybar's custom modules.
 type barItem struct {
@@ -125,12 +137,8 @@ func liveBarSlots() barLive {
 		return live
 	}
 	for slot := range live {
-		raw, err := os.ReadFile(barPidPath(slot))
-		if err != nil {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-		live[slot] = err == nil && processRuns(pid, "waybar")
+		st, err := os.Stat(barSeenPath(slot))
+		live[slot] = err == nil && time.Since(st.ModTime()) < 10*time.Second
 	}
 	return live
 }
@@ -193,23 +201,13 @@ func readBarState() *barState {
 // cliWaybarFollow is `omamac waybar N`: it prints slot's item whenever it changes, until
 // Waybar stops it.
 func cliWaybarFollow(slot int, stdout io.Writer) int {
-	if err := os.MkdirAll(barDir(), 0o700); err == nil {
-		pidFile := barPidPath(slot)
-		me := strconv.Itoa(os.Getpid())
-		if os.WriteFile(pidFile, []byte(me), 0o600) == nil {
-			defer func() {
-				if raw, _ := os.ReadFile(pidFile); string(raw) == me {
-					_ = os.Remove(pidFile)
-				}
-			}()
-		}
-	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGPIPE)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	last := ""
 	for {
+		touchBarSlot(slot)
 		line, _ := json.Marshal(barItemFor(slot, readBarState()))
 		if string(line) != last {
 			if _, err := fmt.Fprintf(stdout, "%s\n", line); err != nil {
@@ -225,19 +223,22 @@ func cliWaybarFollow(slot int, stdout io.Writer) int {
 	}
 }
 
-const waybarUsage = `usage: omamac waybar <install | uninstall | N>
+const barUsage = `usage: omamac bar <install | uninstall | N>
 
-  install     add OmaMac's modules to the Waybar configuration in use: the menu bar
-              items with their text, a click opens the panel; it is backed up first
-              (OmaMac does this itself at its start when Waybar runs)
-  uninstall   take them out again, and keep OmaMac from adding them
-  N           what Waybar runs for a module: prints the Nth menu bar item (0: OmaMac)
+  install     put the menu bar items on the top bar, with their text; a click opens
+              the panel: Omarchy's own bar (~/.config/omarchy/shell.json), else
+              Waybar's configuration in use; backed up first (OmaMac does this itself
+              at its start)
+  uninstall   take them off again, and keep OmaMac from adding them
+  N           what Omarchy's bar runs: prints the Nth menu bar item once (0: OmaMac)
+
+omamac waybar N runs as Waybar's module instead: it prints the item as it changes.
 `
 
-// cliWaybar is `omamac waybar …`.
-func cliWaybar(configPath string, args []string, stdout, stderr io.Writer) int {
+// cliBar is `omamac bar …` and `omamac waybar …`.
+func cliBar(configPath string, args []string, follow bool, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprint(stderr, waybarUsage)
+		fmt.Fprint(stderr, barUsage)
 		return 2
 	}
 	switch args[0] {
@@ -246,17 +247,21 @@ func cliWaybar(configPath string, args []string, stdout, stderr io.Writer) int {
 		var changed bool
 		var err error
 		if args[0] == "install" {
-			changed, err = setUpWaybar(bin, stdout)
+			n := 0
+			if a, err := newApp(configPath, true); err == nil {
+				n = len(a.barPanels())
+			}
+			changed, err = setUpBar(bin, n, stdout)
 		} else {
-			changed, err = takeDownWaybar(stdout)
+			changed, err = takeDownBar(stdout)
 		}
 		if err != nil {
 			fmt.Fprintln(stderr, "omamac:", err)
 			return 1
 		}
 		saveWaybarMode(configPath, map[string]string{"install": "on", "uninstall": "off"}[args[0]])
-		if changed {
-			restartWaybar(stdout)
+		if !changed {
+			fmt.Fprintln(stdout, "Nothing to change.")
 		}
 		if args[0] == "install" {
 			fmt.Fprint(stdout, "\nOptional, in ~/.config/hypr/bindings.conf: a key for OmaMac's launcher\n"+
@@ -266,15 +271,51 @@ func cliWaybar(configPath string, args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, waybarUsage)
+		fmt.Fprint(stdout, barUsage)
 		return 0
 	}
 	slot, err := strconv.Atoi(args[0])
 	if err != nil || slot < 0 || slot > barSlots {
-		fmt.Fprint(stderr, waybarUsage)
+		fmt.Fprint(stderr, barUsage)
 		return 2
 	}
-	return cliWaybarFollow(slot, stdout)
+	if follow {
+		return cliWaybarFollow(slot, stdout)
+	}
+	return cliBarOnce(slot, stdout)
+}
+
+// setUpBar puts OmaMac's modules on the bar there is, Omarchy's own or Waybar, for n
+// menu bar items; changed: the bar shows a new configuration.
+func setUpBar(bin string, n int, out io.Writer) (bool, error) {
+	if omarchyShell() {
+		return setUpOmarchyBar(bin, n, out)
+	}
+	changed, err := setUpWaybar(bin, out)
+	if err == nil && changed {
+		restartWaybar(out)
+	}
+	return changed, err
+}
+
+// takeDownBar takes them off again.
+func takeDownBar(out io.Writer) (bool, error) {
+	if omarchyShell() {
+		return takeDownOmarchyBar(out)
+	}
+	changed, err := takeDownWaybar(out)
+	if err == nil && changed {
+		restartWaybar(out)
+	}
+	return changed, err
+}
+
+// barRuns reports whether the bar runs, to be set up.
+func barRuns() bool {
+	if omarchyShell() {
+		return omarchyShellRuns()
+	}
+	return waybarArgs() != nil
 }
 
 // saveWaybarMode remembers in OmaMac's configuration whether its modules are wanted.
@@ -347,7 +388,8 @@ func waybarPID() string {
 		if _, err := strconv.Atoi(d.Name()); err != nil {
 			continue
 		}
-		if comm, err := os.ReadFile(filepath.Join("/proc", d.Name(), "comm")); err == nil && strings.TrimSpace(string(comm)) == "waybar" {
+		// "waybar", or a wrapper's name such as ".waybar-wrapped" (Nix)
+		if comm, err := os.ReadFile(filepath.Join("/proc", d.Name(), "comm")); err == nil && strings.Contains(string(comm), "waybar") {
 			return d.Name()
 		}
 	}
@@ -406,7 +448,11 @@ func waybarTarget(args []string, user, system []string, out io.Writer) (string, 
 	}
 	sys := firstConfigIn(system)
 	if sys == "" {
-		return "", errors.New("Waybar's configuration not found")
+		running := "Waybar runs"
+		if args == nil {
+			running = "no Waybar process runs"
+		}
+		return "", fmt.Errorf("Waybar's configuration not found (%s; looked in %s)", running, strings.Join(append(user, system...), ", "))
 	}
 	text, err := os.ReadFile(sys)
 	if err != nil {
@@ -685,66 +731,104 @@ func uninstallWaybar(cfg, system string, out io.Writer) (changed bool, err error
 	return changed, nil
 }
 
-// autoWaybar sets Waybar up as OmaMac starts on Linux (Config.Waybar ""/"on"): once
-// Waybar runs, its configuration gets OmaMac's modules, or this program's path anew
-// after an update; Waybar restarts only when something changed.
-func (a *App) autoWaybar(mode string) {
+// removeTrays takes OmaMac's tray icons away as it quits (Linux): a bar that misses
+// that the app ended would keep them, and add new ones at every start.
+func (a *App) removeTrays() {
+	if goos != "linux" {
+		return
+	}
+	if a.mainTray != nil {
+		a.mainTray.Destroy()
+		a.mainTray = nil
+	}
+	for _, rt := range a.runtimes {
+		if rt.tray != nil {
+			rt.tray.Destroy()
+			rt.tray = nil
+		}
+	}
+}
+
+// autoBar sets the top bar up as OmaMac starts on Linux (Config.Waybar ""/"on"): once
+// the bar runs, it gets OmaMac's modules, or this program's path anew after an update;
+// it reloads only when something changed. n: the menu bar items.
+func (a *App) autoBar(mode string, n int) {
 	if goos != "linux" || mode == "off" {
 		return
 	}
-	for i := 0; waybarArgs() == nil; i++ { // Waybar may start after OmaMac
+	for i := 0; !barRuns(); i++ { // the bar may start after OmaMac
 		if i == 20 {
 			return
 		}
 		time.Sleep(3 * time.Second)
 	}
 	var log bytes.Buffer
-	changed, err := setUpWaybar(omamacCommand(), &log)
-	if err == nil && changed {
-		restartWaybar(&log)
-	}
+	changed, err := setUpBar(omamacCommand(), n, &log)
 	a.updateUI(func() {
 		if err != nil {
-			logf("waybar", "not set up: %v", err)
+			logf("bar", "not set up: %v", err)
 			if mode == "" {
-				a.toast("⚠️ Waybar: " + err.Error())
+				a.toast("⚠️ " + err.Error())
 			}
 			return
 		}
+		a.barModules = n
 		if changed {
-			logf("waybar", "set up: %s", strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
+			logf("bar", "set up: %s", strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
 		}
 		if a.Config.Waybar == "" {
 			a.Config.Waybar = "on"
 			_ = SaveConfig(a.ConfigPath, a.Config)
-			a.toast(T("OmaMac zeigt seine Menüleisten-Einträge jetzt in Waybar (abschalten: Einstellungen)"))
+			a.toast(T("OmaMac zeigt seine Menüleisten-Einträge jetzt in der oberen Leiste (abschalten: Einstellungen)"))
 		}
 	})
 }
 
-// setWaybar switches the Waybar modules on or off (settings).
-func (a *App) setWaybar(on bool) {
+// syncOmarchyBar gives Omarchy's bar one module per menu bar item as they change (its
+// modules are entries of shell.json; Waybar's are fixed slots).
+func (a *App) syncOmarchyBar() {
+	n := min(len(a.barPanels()), barSlots)
+	if goos != "linux" || a.Config.Waybar != "on" || a.barModules < 0 || n == a.barModules || a.barSyncing || !omarchyShell() {
+		return
+	}
+	a.barSyncing, a.barModules = true, n
+	go func() {
+		_, err := setUpOmarchyBar(omamacCommand(), n, io.Discard)
+		a.updateUI(func() {
+			a.barSyncing = false
+			if err != nil {
+				logf("bar", "modules not updated: %v", err)
+			}
+		})
+	}()
+}
+
+// setBar switches the bar's modules on or off (settings).
+func (a *App) setBar(on bool) {
 	mode := map[bool]string{true: "on", false: "off"}[on]
 	a.Config.Waybar = mode
 	_ = SaveConfig(a.ConfigPath, a.Config)
+	n := len(a.barPanels())
 	go func() {
 		var log bytes.Buffer
 		var changed bool
 		var err error
 		if on {
-			changed, err = setUpWaybar(omamacCommand(), &log)
+			changed, err = setUpBar(omamacCommand(), n, &log)
 		} else {
-			changed, err = takeDownWaybar(&log)
-		}
-		if err == nil && changed {
-			restartWaybar(&log)
+			changed, err = takeDownBar(&log)
 		}
 		a.updateUI(func() {
 			if err != nil {
-				a.toast("⚠️ Waybar: " + err.Error())
+				a.toast("⚠️ " + err.Error())
 				return
 			}
-			logf("waybar", "%s: %s", mode, strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
+			if on {
+				a.barModules = n
+			}
+			if changed {
+				logf("bar", "%s: %s", mode, strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
+			}
 		})
 	}()
 }
