@@ -119,6 +119,9 @@ func (p *PanelSpec) Normalize() {
 			p.ID = fmt.Sprintf("panel-%d", time.Now().Unix())
 		}
 	}
+	if p.BuiltinKind == BuiltinAgentUsage && p.Height < agentUsageHeight() {
+		p.Height = agentUsageHeight() // Antigravity installed since: room for its section
+	}
 	if p.BuiltinKind != "" {
 		p.IsBuiltin = true
 		p.Type = PanelTypeNative // system modules render natively (board, ticket viewer)
@@ -536,7 +539,7 @@ func BuiltinSystemPanels() []*PanelSpec {
 			BuiltinKind:    BuiltinAgentUsage,
 			RefreshSeconds: 300,
 			Width:          420,
-			Height:         250,
+			Height:         agentUsageHeight(),
 			DashboardOff:   !claudeCodeSetUp(),
 			LastUpdated:    now,
 		},

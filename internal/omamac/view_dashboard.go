@@ -40,6 +40,9 @@ func tileSize(p *PanelSpec) dashSize {
 			id = "wide"
 		case BuiltinAgentUsage:
 			id = "small"
+			if antigravityInstalled() {
+				id = "tall"
+			}
 		}
 	}
 	for _, s := range dashSizes {

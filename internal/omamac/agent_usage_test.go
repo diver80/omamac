@@ -183,6 +183,9 @@ func TestAgentUsageModuleRenders(t *testing.T) {
 		t.Fatalf("system panel: %+v", p)
 	}
 	limits, _ := parseClaudeUsage([]byte(usageAnswer))
+	app.agents.found = []agentInfo{{agentDefs[0], "/bin/claude"}, {agentDefs[3], "/bin/agy"}}
+	agy, _ := parseAgyUsage([]byte(agyUsageAnswer))
+	app.setAgyUsage(agentUsage{Loaded: true, Limits: agy, Extra: "AI-Credits: 17", At: time.Now()})
 	for _, u := range []agentUsage{
 		{},
 		{Loaded: true, Plan: "Team", Limits: limits, At: time.Now()},
@@ -191,5 +194,78 @@ func TestAgentUsageModuleRenders(t *testing.T) {
 	} {
 		app.setClaudeUsage(u)
 		ui.Render(func(c *ui.Context) { app.renderNativePanelPopover(c, p, nil, func() {}) }, 420, 250, 1)
+	}
+}
+
+// What agy -p "/usage" --output-format json printed (descriptions shortened).
+const agyUsageAnswer = `{"conversation_id":"","status":"SUCCESS","response":"Gemini Models\tWeekly Limit Remaining\t98%\n","duration_seconds":0,"num_turns":0,
+"command":{"name":"usage","data":{"description":"Within each group, models share a weekly limit and a 5-hour limit.","groups":[
+ {"name":"Gemini Models","description":"Gemini Flash, Gemini Pro","buckets":[
+  {"id":"gemini-weekly","name":"Weekly Limit Remaining","window":"weekly","remaining_fraction":0.9760345220565796,"reset_time":"2026-11-18T08:17:26Z"},
+  {"id":"gemini-5h","name":"Five Hour Limit Remaining","window":"5h","remaining_fraction":1,"reset_time":"2026-11-12T19:08:11Z"}]},
+ {"name":"Claude and GPT models","buckets":[
+  {"id":"3p-weekly","name":"Weekly Limit Remaining","window":"weekly","remaining_fraction":0.980131983757019,"reset_time":"2026-11-16T05:59:41Z"},
+  {"id":"3p-5h","name":"Five Hour Limit Remaining","window":"5h","remaining_fraction":1,"reset_time":"2026-11-12T19:11:55Z"}]},
+ {"name":"Gemini 4 Argon","buckets":[
+  {"id":"gemini-argon-wtu-weekly","name":"Gemini 4 Argon Weekly Limit","window":"weekly","remaining_fraction":0,"reset_time":"2026-11-14T04:49:13Z"}]}]}}}`
+
+func TestParseAgyUsage(t *testing.T) {
+	limits, err := parseAgyUsage([]byte(agyUsageAnswer))
+	if err != nil || len(limits) != 5 {
+		t.Fatalf("%v %+v", err, limits)
+	}
+	want := []struct {
+		group, label string
+		percent      float64
+	}{{"Gemini", "Session", 0}, {"Gemini", "Woche", 2.4}, {"Claude & GPT", "Session", 0}, {"Claude & GPT", "Woche", 2}, {"Gemini 4 Argon", "Woche", 100}}
+	for i, w := range want {
+		if l := limits[i]; l.Group != w.group || l.Label != w.label || l.Percent != w.percent || l.ResetsAt.IsZero() || l.Window == 0 {
+			t.Errorf("limit %d = %+v, want %+v", i, l, w)
+		}
+	}
+	if limits[4].status() != "crit" {
+		t.Error("a used-up limit is not critical")
+	}
+	if n, ok := parseAgyCredits([]byte(`{"status":"SUCCESS","command":{"name":"credits","data":{"remaining_credits":17,"upgrade_uri":"x"}}}`)); !ok || n != 17 {
+		t.Fatalf("credits %d %v", n, ok)
+	}
+	for _, bad := range []string{"", "Please log in", `{"status":"ERROR","response":"not logged in"}`, `{"status":"SUCCESS","command":{"data":{"groups":[]}}}`} {
+		if _, err := parseAgyUsage([]byte(bad)); err == nil {
+			t.Errorf("%q gave limits", bad)
+		}
+	}
+}
+
+func TestFetchAgyUsage(t *testing.T) {
+	old := runAgy
+	defer func() { runAgy = old }()
+	var commands []string
+	fail := false
+	runAgy = func(_ context.Context, ag agentInfo, dir, command string) ([]byte, error) {
+		commands = append(commands, command)
+		if fail {
+			return nil, context.DeadlineExceeded
+		}
+		if command == "/credits" {
+			return []byte(`{"status":"SUCCESS","command":{"data":{"remaining_credits":17}}}`), nil
+		}
+		return []byte(agyUsageAnswer), nil
+	}
+	ag := agentInfo{agentDefs[3], "/bin/agy"}
+	u := fetchAgyUsage(context.Background(), ag, t.TempDir(), agentUsage{})
+	if len(u.Limits) != 5 || u.Extra != "AI-Credits: 17" || u.Problem != "" || strings.Join(commands, " ") != "/usage /credits" {
+		t.Fatalf("usage %+v after %v", u, commands)
+	}
+	fail = true
+	if again := fetchAgyUsage(context.Background(), ag, t.TempDir(), u); len(again.Limits) != 5 || again.Problem == "" {
+		t.Fatalf("a failed refresh: %+v", again)
+	}
+
+	// The menu bar shows the first agent with numbers; the status is the worst limit's
+	if st, badge := usageStatus(agentUsage{NoLogin: true, Loaded: true}, u); st != "crit" || badge != "0 % · 2 %" {
+		t.Fatalf("status %q badge %q", st, badge)
+	}
+	if st, badge := usageStatus(agentUsage{NoLogin: true}); st != "info" || badge != "nicht angemeldet" {
+		t.Fatalf("status %q badge %q", st, badge)
 	}
 }

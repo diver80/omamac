@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.0
+
+- **Antigravity in the agent limits:** When Antigravity (`agy`) is installed, the agent limits module also shows its quota.
+  - Each group of models (Gemini, Claude & GPT, Gemini 4 Argon) has a session and a weekly limit, plus your remaining AI credits.
+  - It asks `agy` itself (`agy -p "/usage"`), which costs no tokens and needs no Google login in OmaMac.
+  - The module's status turns red as soon as one limit is used up; the menu bar shows the first agent's session and week.
+- The module grows to fit: a taller tile and popover when Antigravity is there.
+
 ## 1.13.0
 
 - **Agent limits:** A new built-in module shows the limits of your Claude Code plan, as `/usage` in Claude Code does: the 5-hour session, the week and a model's own week. Each has a bar, the percent used and the time until it resets; a mark on the bar shows where an even pace would be.

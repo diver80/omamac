@@ -377,9 +377,19 @@ func TestGenerateScreenshots(t *testing.T) {
 		app.launcherQuery = "Make a panel with my open GitHub pull requests"
 	}
 	savePNG("14-agent.png", app.RenderWalPanelView, 680, 480)
+
+	// The agents' limits with Antigravity's too: per group of models, and its AI credits
+	app.agents.found = append(app.agents.found, agentInfo{agentDefs[3], "/Users/me/.local/bin/agy"})
+	app.setAgyUsage(agentUsage{Loaded: true, At: now, Extra: fmt.Sprintf(T("AI-Credits: %d"), 17), Limits: []usageLimit{
+		{Group: "Gemini", Label: T("Session"), Percent: 12, ResetsAt: now.Add(3*time.Hour + 50*time.Minute), Window: sessionWindow},
+		{Group: "Gemini", Label: T("Woche"), Percent: 24, ResetsAt: now.Add(137 * time.Hour), Window: weekWindow},
+		{Group: "Claude & GPT", Label: T("Session"), Percent: 0, ResetsAt: now.Add(4*time.Hour + 5*time.Minute), Window: sessionWindow},
+		{Group: "Claude & GPT", Label: T("Woche"), Percent: 2, ResetsAt: now.Add(87 * time.Hour), Window: weekWindow},
+		{Group: "Gemini 4 Argon", Label: T("Woche"), Percent: 100, ResetsAt: now.Add(38 * time.Hour), Window: weekWindow},
+	}})
 	savePNG("18-agenten-limits.png", func(c *ui.Context) {
 		ui.Column(c).Fill().Background(c.Theme().Surface).Children(func() { app.renderNativePanelPopover(c, usage, nil, nil) })
-	}, 440, 230)
+	}, 440, 430)
 
 	// A coding agent's background run in the "KI arbeitet" dialog
 	agentRun := &aiRun{title: "Claude Code: " + app.launcherQuery, started: time.Now().Add(-48 * time.Second), cancel: func() {}}

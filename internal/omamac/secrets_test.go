@@ -56,6 +56,10 @@ func TestMain(m *testing.M) {
 	setLogPath("")     // tests never write to the user's log
 	legacyVaultItems = &memSecrets{items: map[string][]byte{}}
 	readClaudeLogin = func(context.Context) (*claudeLogin, error) { return nil, errNoClaudeLogin } // never the real keychain
+	runAgy = func(context.Context, agentInfo, string, string) ([]byte, error) {
+		return nil, errors.New("no agy in tests")
+	}
+	antigravityInstalled = func() bool { return false } // the same sizes on every machine
 	os.Exit(m.Run())
 }
 

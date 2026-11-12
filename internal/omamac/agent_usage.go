@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,6 +74,7 @@ func parseClaudeLogin(raw []byte) (*claudeLogin, error) {
 
 // usageLimit is one limit of a plan: the session's, the week's, a model's week.
 type usageLimit struct {
+	Group    string // the models it counts for, when the agent has several ("Gemini")
 	Label    string
 	Percent  float64
 	ResetsAt time.Time
@@ -94,6 +96,19 @@ type agentUsage struct {
 type usageState struct {
 	mu     sync.Mutex
 	claude agentUsage
+	agy    agentUsage // Antigravity
+}
+
+func (a *App) agyUsage() agentUsage {
+	a.usage.mu.Lock()
+	defer a.usage.mu.Unlock()
+	return a.usage.agy
+}
+
+func (a *App) setAgyUsage(u agentUsage) {
+	a.usage.mu.Lock()
+	a.usage.agy = u
+	a.usage.mu.Unlock()
 }
 
 func (a *App) claudeUsage() agentUsage {
@@ -108,12 +123,155 @@ func (a *App) setClaudeUsage(u agentUsage) {
 	a.usage.mu.Unlock()
 }
 
-// refreshAgentUsage fetches the limits and sets the panel's status and menu bar text.
+// refreshAgentUsage fetches the limits of Claude Code and Antigravity (when installed) and
+// sets the panel's status and menu bar text.
 func (a *App) refreshAgentUsage(ctx context.Context, p *PanelSpec) {
-	u := fetchClaudeUsage(ctx, a.claudeUsage())
-	a.setClaudeUsage(u)
-	p.Status, p.BadgeText = usageStatus(u)
+	var wg sync.WaitGroup
+	if ag := a.installedAgent("agy"); ag != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.setAgyUsage(fetchAgyUsage(ctx, *ag, a.Config.PanelsDir, a.agyUsage()))
+		}()
+	}
+	a.setClaudeUsage(fetchClaudeUsage(ctx, a.claudeUsage()))
+	wg.Wait()
+	p.Status, p.BadgeText = usageStatus(a.claudeUsage(), a.agyUsage())
 	p.LastUpdated = time.Now().Format("15:04:05")
+}
+
+// runAgy runs Antigravity's read-only slash commands; tests replace it.
+var runAgy = runAgyCommand
+
+// runAgyCommand runs a read-only slash command of Antigravity in print mode, as JSON.
+func runAgyCommand(ctx context.Context, ag agentInfo, dir, command string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ag.Path, "-p", command, "--output-format", "json")
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return out, fmt.Errorf("%v: %s", err, firstLines(stderr.String()+string(out), 2, 160))
+	}
+	return out, nil
+}
+
+// fetchAgyUsage asks Antigravity for its quota (agy -p /usage) and its AI credits; that
+// costs no tokens. When it fails, prev's numbers stay, with why.
+func fetchAgyUsage(ctx context.Context, ag agentInfo, dir string, prev agentUsage) agentUsage {
+	const key = "Antigravity limits"
+	out, err := runAgy(ctx, ag, dir, "/usage")
+	var limits []usageLimit
+	if err == nil {
+		limits, err = parseAgyUsage(out)
+	}
+	logOutcome("agent", key, err)
+	if err != nil {
+		prev.Loaded, prev.Problem = true, err.Error()
+		return prev
+	}
+	u := agentUsage{Limits: limits, At: time.Now(), Loaded: true}
+	if out, err := runAgy(ctx, ag, dir, "/credits"); err == nil {
+		if n, ok := parseAgyCredits(out); ok {
+			u.Extra = fmt.Sprintf(T("AI-Credits: %d"), n)
+		}
+	}
+	return u
+}
+
+// agyCommandOutput is what agy -p "/<command>" --output-format json prints.
+type agyCommandOutput struct {
+	Status   string `json:"status"`
+	Response string `json:"response"`
+	Command  struct {
+		Data json.RawMessage `json:"data"`
+	} `json:"command"`
+}
+
+func decodeAgy(out []byte) (agyCommandOutput, error) {
+	var v agyCommandOutput
+	if i := bytes.IndexByte(out, '{'); i > 0 {
+		out = out[i:]
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return v, fmt.Errorf(T("Antigravity antwortet unerwartet: %s"), firstLines(string(out), 1, 120))
+	}
+	if v.Status != "" && v.Status != "SUCCESS" {
+		return v, fmt.Errorf("Antigravity: %s", firstLines(v.Status+" "+v.Response, 2, 160))
+	}
+	return v, nil
+}
+
+// parseAgyUsage reads Antigravity's quota: per group of models a 5-hour and a weekly
+// limit, each as the fraction remaining.
+func parseAgyUsage(out []byte) ([]usageLimit, error) {
+	v, err := decodeAgy(out)
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Groups []struct {
+			Name    string `json:"name"`
+			Buckets []struct {
+				Name      string   `json:"name"`
+				Window    string   `json:"window"`
+				Remaining *float64 `json:"remaining_fraction"`
+				ResetTime string   `json:"reset_time"`
+			} `json:"buckets"`
+		} `json:"groups"`
+	}
+	_ = json.Unmarshal(v.Command.Data, &data)
+	var limits []usageLimit
+	for _, g := range data.Groups {
+		group := agyGroupName(g.Name)
+		sort.SliceStable(g.Buckets, func(i, j int) bool { // the session first, as Claude Code's
+			return g.Buckets[i].Window == "5h" && g.Buckets[j].Window != "5h"
+		})
+		for _, b := range g.Buckets {
+			if b.Remaining == nil {
+				continue
+			}
+			l := usageLimit{Group: group, Percent: math.Round((1-*b.Remaining)*1000) / 10, ResetsAt: parseResetTime(b.ResetTime)}
+			switch b.Window {
+			case "5h":
+				l.Label, l.Window = T("Session"), sessionWindow
+			case "weekly":
+				l.Label, l.Window = T("Woche"), weekWindow
+			default:
+				l.Label = b.Name
+			}
+			limits = append(limits, l)
+		}
+	}
+	if len(limits) == 0 {
+		return nil, errors.New(T("Antigravity nennt keine Limits – ist agy angemeldet?"))
+	}
+	return limits, nil
+}
+
+// agyGroupName shortens a group of models: "Claude and GPT models" is "Claude & GPT".
+func agyGroupName(name string) string {
+	name = strings.TrimSpace(name)
+	for _, suffix := range []string{" Models", " models"} {
+		name = strings.TrimSuffix(name, suffix)
+	}
+	return strings.ReplaceAll(name, " and ", " & ")
+}
+
+func parseAgyCredits(out []byte) (int, bool) {
+	v, err := decodeAgy(out)
+	if err != nil {
+		return 0, false
+	}
+	var data struct {
+		Remaining *float64 `json:"remaining_credits"`
+	}
+	if json.Unmarshal(v.Command.Data, &data) != nil || data.Remaining == nil {
+		return 0, false
+	}
+	return int(*data.Remaining), true
 }
 
 // fetchClaudeUsage asks for the current numbers; when that fails, prev's stay, with why.
@@ -348,26 +506,34 @@ func (l usageLimit) status() string {
 	return "ok"
 }
 
-// usageStatus is the panel's status and menu bar text: the session's and the week's percent.
-func usageStatus(u agentUsage) (status, badge string) {
-	if len(u.Limits) == 0 {
-		if u.NoLogin {
-			return "info", T("nicht angemeldet")
-		}
-		return "info", "Claude …"
-	}
+// usageStatus is the panel's status, the worst limit's, and its menu bar text: the first
+// agent's with numbers, its session's and week's percent.
+func usageStatus(agents ...agentUsage) (status, badge string) {
 	rank := map[string]int{"ok": 0, "warn": 1, "crit": 2}
 	status = "ok"
 	var parts []string
-	for i, l := range u.Limits {
-		if s := l.status(); rank[s] > rank[status] {
-			status = s
+	noLogin, any := true, false
+	for _, u := range agents {
+		noLogin = noLogin && u.NoLogin
+		if len(parts) == 0 {
+			for i := 0; i < len(u.Limits) && i < 2; i++ {
+				parts = append(parts, pctText(u.Limits[i].Percent))
+			}
 		}
-		if i < 2 {
-			parts = append(parts, pctText(l.Percent))
+		for _, l := range u.Limits {
+			any = true
+			if s := l.status(); rank[s] > rank[status] {
+				status = s
+			}
 		}
 	}
-	return status, strings.Join(parts, " · ")
+	switch {
+	case any:
+		return status, strings.Join(parts, " · ")
+	case noLogin && len(agents) > 0:
+		return "info", T("nicht angemeldet")
+	}
+	return "info", "…"
 }
 
 func pctText(v float64) string {
@@ -403,12 +569,12 @@ func resetText(t time.Time) string {
 	return fmt.Sprintf(T("Neu ab %s"), T(weekdayShort[(int(t.Weekday())+6)%7])+" "+t.Format("15:04"))
 }
 
-// claudeAgent is the installed Claude Code; nil when it is not.
-func (a *App) claudeAgent() *agentInfo {
+// installedAgent is the installed agent id ("claude", "agy"); nil when it is not.
+func (a *App) installedAgent(id string) *agentInfo {
 	a.agents.mu.Lock()
 	defer a.agents.mu.Unlock()
 	for i := range a.agents.found {
-		if a.agents.found[i].ID == "claude" {
+		if a.agents.found[i].ID == id {
 			ag := a.agents.found[i]
 			return &ag
 		}
@@ -416,8 +582,11 @@ func (a *App) claudeAgent() *agentInfo {
 	return nil
 }
 
-// claudeOrange is Claude's color, for its mark in the module.
-var claudeOrange = ui.Hex("#D97757")
+// The agents' marks in the module.
+var (
+	claudeOrange = ui.Hex("#D97757")
+	agyBlue      = ui.Hex("#4285F4")
+)
 
 // renderAgentUsageModule draws the limits: per limit a bar, where an even use would be,
 // the percent used and the time until it starts anew.
@@ -430,8 +599,12 @@ func (a *App) renderAgentUsageModule(c *ui.Context, p *PanelSpec, onClose func()
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				ui.Text(c, p.Icon+" "+T(p.Title)).FontSize(14).Bold().SingleLine()
 				line := T("Abo-Limits")
-				if !u.At.IsZero() {
-					line += " · " + T("Stand ") + u.At.Format("15:04")
+				at := u.At
+				if at.IsZero() {
+					at = a.agyUsage().At
+				}
+				if !at.IsZero() {
+					line += " · " + T("Stand ") + at.Format("15:04")
 				}
 				ui.Text(c, line).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
@@ -442,29 +615,54 @@ func (a *App) renderAgentUsageModule(c *ui.Context, p *PanelSpec, onClose func()
 		})
 		ui.Row(c).FillWidth().Height(1).Background(t.Border)
 
-		claude := a.claudeAgent()
+		claude, agy := a.installedAgent("claude"), a.installedAgent("agy")
+		ui.Scroll(c).FillWidth().Grow(1).Children(func() {
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				if claude != nil || agy == nil || !u.NoLogin {
+					a.renderUsageSection(c, p, "claude", "✳", claudeOrange, "Claude Code", claude, u, now)
+				}
+				if agy != nil {
+					if claude != nil || !u.NoLogin {
+						ui.Row(c).FillWidth().Height(1).Background(t.Border)
+					}
+					a.renderUsageSection(c, p, "agy", "◆", agyBlue, "Antigravity", agy, a.agyUsage(), now)
+				}
+			})
+		})
+	})
+}
+
+// renderUsageSection is one agent in the module: its name and plan, then its limits,
+// under the group of models each counts for.
+func (a *App) renderUsageSection(c *ui.Context, p *PanelSpec, id, mark string, color ui.Color, name string, ag *agentInfo, u agentUsage, now time.Time) {
+	t := c.Theme()
+	ui.Column(c.Key("usage-" + id)).FillWidth().Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "✳").FontSize(16).Bold().TextColor(claudeOrange)
-			ui.Text(c, "Claude Code").FontSize(13.5).Bold().SingleLine()
+			ui.Text(c, mark).FontSize(16).Bold().TextColor(color)
+			ui.Text(c, name).FontSize(13.5).Bold().SingleLine()
 			if u.Plan != "" {
 				ui.Text(c, u.Plan).FontSize(12).TextColor(t.TextMuted).SingleLine()
 			}
 			ui.Row(c).Grow(1)
-			if claude != nil && ui.Button(c.Key("usage-term-"+p.ID), ">_").Tooltip(T("Claude Code im Terminal öffnen")).Clicked() {
-				a.agentInTerminal(*claude, nil, nil)
+			if ag != nil && ui.Button(c.Key("usage-term-"+p.ID+"-"+id), ">_").Tooltip(fmt.Sprintf(T("%s im Terminal öffnen"), name)).Clicked() {
+				a.agentInTerminal(*ag, nil, nil)
 			}
 		})
-
+		group := ""
 		for i, l := range u.Limits {
+			if l.Group != group {
+				group = l.Group
+				ui.Text(c, strings.ToUpper(group)).FontSize(10).Bold().TextColor(t.TextMuted).SingleLine()
+			}
 			bar, fg := t.Accent, t.Text // colored only when it runs short
 			if l.status() != "ok" {
 				_, bar = statusColors(t, l.status())
 				fg = bar
 			}
-			ui.Row(c.Key(fmt.Sprintf("usage-%s-%d", p.ID, i))).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+			ui.Row(c.Key(fmt.Sprintf("usage-%s-%s-%d", p.ID, id, i))).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 				ui.Text(c, l.Label).FontSize(12).Width(88).SingleLine()
 				usageBar(c, l, now, bar)
-				ui.Text(c, pctText(l.Percent)).FontSize(12).Bold().TextColor(fg).Width(38).TextAlign(ui.End).SingleLine()
+				ui.Text(c, pctText(l.Percent)).FontSize(12).Bold().TextColor(fg).Width(46).TextAlign(ui.End).SingleLine()
 				if l.ResetsAt.IsZero() {
 					ui.Row(c).Width(62)
 					return
@@ -476,11 +674,10 @@ func (a *App) renderAgentUsageModule(c *ui.Context, p *PanelSpec, onClose func()
 		if u.Extra != "" {
 			ui.Text(c, u.Extra).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		}
-
 		switch {
 		case !u.Loaded:
 			ui.Text(c, T("Lädt …")).FontSize(11.5).TextColor(t.TextMuted)
-		case claude == nil && u.NoLogin && a.agents.isDetected():
+		case id == "claude" && ag == nil && u.NoLogin && a.agents.isDetected():
 			ui.Text(c, T("Claude Code ist nicht installiert (brew install --cask claude-code).")).FontSize(11.5).TextColor(t.TextMuted).FillWidth()
 		case u.NoLogin:
 			ui.Text(c, u.Problem+" "+T("Starte Claude Code und melde dich mit /login an.")).FontSize(11.5).TextColor(t.TextMuted).FillWidth()
@@ -515,4 +712,25 @@ func usageBar(c *ui.Context, l usageLimit, now time.Time, fill ui.Color) {
 			Tooltip(fmt.Sprintf(T("Bei gleichmäßiger Nutzung wären jetzt %s verbraucht"), pctText(pace*100)))
 		segment(pace, 1)
 	})
+}
+
+// antigravityInstalled reports whether agy is where its installer puts it, or in the PATH.
+// The module is taller then: it has a section for it.
+var antigravityInstalled = sync.OnceValue(func() bool {
+	home, _ := os.UserHomeDir()
+	for _, path := range []string{filepath.Join(home, ".local", "bin", "agy"), "/opt/homebrew/bin/agy", "/usr/local/bin/agy"} {
+		if executableFile(path) != "" {
+			return true
+		}
+	}
+	_, err := exec.LookPath("agy")
+	return err == nil
+})
+
+// agentUsageHeight is the module's popover height: room for Antigravity's section too.
+func agentUsageHeight() int {
+	if antigravityInstalled() {
+		return 430
+	}
+	return 250
 }
