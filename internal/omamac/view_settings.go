@@ -266,6 +266,18 @@ func (a *App) renderLauncherSettings(c *ui.Context) {
 							FontSize(11.5).TextColor(t.TextMuted)
 					})
 				})
+				if goos == "linux" {
+					ui.Field(c, "Waybar", func() {
+						ui.Column(c).Gap(4).Children(func() {
+							on := a.Config.Waybar != "off"
+							if ui.Switch(c.Key("cfg-waybar"), &on).Changed() {
+								a.setWaybar(on)
+							}
+							ui.Text(c, T("Die Einträge der Menüleiste als Module in Waybar, mit ihrem Text: ein Klick öffnet das Panel. Die Konfiguration wird vorher gesichert.")).
+								FontSize(11.5).TextColor(t.TextMuted)
+						})
+					})
+				}
 				ui.Field(c, T("Panel-Ordner"), func() {
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, a.Config.PanelsDir).FontSize(12).Grow(1).MinWidth(0).SingleLine()

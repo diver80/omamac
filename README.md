@@ -48,10 +48,9 @@ OmaMac runs on Linux too, made for [Omarchy](https://omarchy.org) (Hyprland and 
 
 ```bash
 curl -fsSL https://github.com/diver80/omamac/releases/latest/download/install.sh | sh   # ~/.local/omamac.app and the omamac command
-omamac waybar install   # the menu bar items as Waybar modules
 ```
 
-Waybar's tray shows an item's icon but not its text, so OmaMac's menu bar items become Waybar modules instead. `omamac waybar install` adds them to `~/.config/waybar` (the configuration is backed up first, and `omamac waybar uninstall` takes them out again):
+Waybar's tray shows an item's icon but not its text, so OmaMac's menu bar items become Waybar modules instead. OmaMac adds them to the Waybar configuration as it starts (backed up first; Settings › Waybar or `omamac waybar uninstall` takes them out again, `omamac waybar install` puts them back):
 - A module shows its item's text, such as "🤖 5% · 67%".
 - Clicking a module opens the panel's popover. `⌘` opens the launcher, and a right-click opens the main window.
 - The modules follow the panels you put in the menu bar, up to six; while a module runs, that panel has no tray icon.

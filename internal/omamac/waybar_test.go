@@ -123,8 +123,8 @@ func TestWaybarInstallUninstall(t *testing.T) {
 	css := filepath.Join(dir, "style.css")
 	_ = os.WriteFile(css, []byte("* { color: red; }\n"), 0o644)
 
-	if err := installWaybar(dir, "/home/me/.local/bin/omamac", io.Discard); err != nil {
-		t.Fatal(err)
+	if changed, err := installWaybar(cfg, "/home/me/.local/bin/omamac", io.Discard); err != nil || !changed {
+		t.Fatal(changed, err)
 	}
 	mods := jsoncToJSON(t, mustRead(t, filepath.Join(dir, waybarModulesFile)))
 	if len(mods) != barSlots+1 {
@@ -144,15 +144,20 @@ func TestWaybarInstallUninstall(t *testing.T) {
 	if len(backups) != 1 {
 		t.Fatalf("backups: %v", backups)
 	}
-	if err := installWaybar(dir, "/home/me/.local/bin/omamac", io.Discard); err != nil { // twice: no change
-		t.Fatal(err)
+	// Again: nothing to change, so Waybar does not restart at every start.
+	if changed, err := installWaybar(cfg, "/home/me/.local/bin/omamac", io.Discard); err != nil || changed {
+		t.Fatal("a second install changed something", err)
+	}
+	// Another path of the program (an update, another build): only the modules change.
+	if changed, _ := installWaybar(cfg, "/opt/omamac", io.Discard); !changed || !strings.Contains(mustRead(t, filepath.Join(dir, waybarModulesFile)), "'/opt/omamac' waybar 1") {
+		t.Fatal("the new path is not in the modules")
 	}
 	if strings.Count(mustRead(t, cfg), "custom/omamac-1") != 1 || strings.Count(mustRead(t, css), waybarCSSStart) != 1 {
 		t.Fatal("a second install added again")
 	}
 
-	if err := uninstallWaybar(dir, io.Discard); err != nil {
-		t.Fatal(err)
+	if changed, err := uninstallWaybar(cfg, "", io.Discard); err != nil || !changed {
+		t.Fatal(changed, err)
 	}
 	if mustRead(t, cfg) != string(raw) || mustRead(t, css) != "* { color: red; }\n" {
 		t.Fatalf("uninstall left:\n%s\n%s", mustRead(t, cfg), mustRead(t, css))
@@ -160,8 +165,53 @@ func TestWaybarInstallUninstall(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, waybarModulesFile)); !os.IsNotExist(err) {
 		t.Fatal("the modules file stayed")
 	}
-	if err := installWaybar(t.TempDir(), "omamac", io.Discard); err == nil {
-		t.Fatal("no configuration: install should fail")
+}
+
+// Without a configuration of the user's, Waybar's system one is copied into the user's
+// folder, which uninstall removes again; one given with -c is changed in place, if it
+// is the user's.
+func TestWaybarTarget(t *testing.T) {
+	user, sysDir := t.TempDir(), t.TempDir()
+	userDir := filepath.Join(user, "waybar")
+	raw, _ := os.ReadFile("testdata/omarchy-waybar.jsonc")
+	_ = os.WriteFile(filepath.Join(sysDir, "config.jsonc"), raw, 0o644)
+
+	cfg, err := waybarTarget(nil, []string{userDir}, []string{sysDir}, io.Discard)
+	if err != nil || cfg != filepath.Join(userDir, "config.jsonc") || mustRead(t, cfg) != string(raw) {
+		t.Fatal(cfg, err)
+	}
+	if again, _ := waybarTarget(nil, []string{userDir}, []string{sysDir}, io.Discard); again != cfg {
+		t.Fatal("the user's copy should be taken now:", again)
+	}
+	if _, err := installWaybar(cfg, "omamac", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uninstallWaybar(cfg, filepath.Join(sysDir, "config.jsonc"), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cfg); !os.IsNotExist(err) {
+		t.Fatal("the copy stayed after uninstall")
+	}
+
+	if _, err := waybarTarget(nil, []string{userDir}, []string{t.TempDir()}, io.Discard); err == nil {
+		t.Fatal("no configuration anywhere should fail")
+	}
+	if _, err := waybarTarget([]string{"waybar", "-c", "/usr/share/x/config.jsonc"}, []string{userDir}, nil, io.Discard); err == nil || !strings.Contains(err.Error(), "-c /usr/share/x/config.jsonc") {
+		t.Fatal("a -c configuration outside the home folder is not changed:", err)
+	}
+	mine := homePath(".config", "waybar", "mine.jsonc")
+	if got, err := waybarTarget([]string{"waybar", "--config=" + mine}, []string{userDir}, nil, io.Discard); err != nil || got != mine {
+		t.Fatal(got, err)
+	}
+	if ownedPath(homePath(".local", "share", "omarchy", "config", "waybar", "config.jsonc")) {
+		t.Fatal("Omarchy's own files are not OmaMac's to change")
+	}
+}
+
+func TestFlagValue(t *testing.T) {
+	args := []string{"waybar", "-l", "debug", "-c", "/a", "--style=/b"}
+	if flagValue(args, "-c", "--config") != "/a" || flagValue(args, "-s", "--style") != "/b" || flagValue(args, "-x", "--nope") != "" {
+		t.Fatal(args)
 	}
 }
 
@@ -270,5 +320,17 @@ func TestScaleToJPEG(t *testing.T) {
 	}
 	if _, err := scaleToJPEG([]byte("no image"), 100); err == nil {
 		t.Fatal("not an image should fail")
+	}
+}
+
+// Waybar's own environment decides where it reads its configuration.
+func TestWaybarSearchDirs(t *testing.T) {
+	env := map[string]string{"HOME": "/home/u", "XDG_CONFIG_HOME": "/home/u/cfg", "XDG_CONFIG_DIRS": "/opt/xdg:/etc/xdg"}
+	user, system := waybarSearchDirs(func(k string) string { return env[k] })
+	if strings.Join(user, " ") != "/home/u/cfg/waybar /home/u/.config/waybar /home/u/waybar" {
+		t.Fatal(user)
+	}
+	if system[0] != "/opt/xdg/waybar" || system[1] != "/etc/xdg/waybar" {
+		t.Fatal(system)
 	}
 }

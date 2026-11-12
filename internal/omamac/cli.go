@@ -72,7 +72,7 @@ func RunCLI(configPath string, args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "waybar":
-		return cliWaybar(args[1:], stdout, stderr)
+		return cliWaybar(configPath, args[1:], stdout, stderr)
 	case "open":
 		fmt.Fprintln(stderr, "omamac open: on macOS, click the menu bar item")
 		return 2

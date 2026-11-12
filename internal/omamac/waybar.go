@@ -227,33 +227,43 @@ func cliWaybarFollow(slot int, stdout io.Writer) int {
 
 const waybarUsage = `usage: omamac waybar <install | uninstall | N>
 
-  install     add OmaMac's modules to Waybar (~/.config/waybar): the menu bar items
-              with their text, a click opens the panel; the configuration is backed up
-  uninstall   take them out again
+  install     add OmaMac's modules to the Waybar configuration in use: the menu bar
+              items with their text, a click opens the panel; it is backed up first
+              (OmaMac does this itself at its start when Waybar runs)
+  uninstall   take them out again, and keep OmaMac from adding them
   N           what Waybar runs for a module: prints the Nth menu bar item (0: OmaMac)
 `
 
 // cliWaybar is `omamac waybar …`.
-func cliWaybar(args []string, stdout, stderr io.Writer) int {
+func cliWaybar(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
 		fmt.Fprint(stderr, waybarUsage)
 		return 2
 	}
 	switch args[0] {
 	case "install", "uninstall":
-		dir := waybarConfigDir()
 		bin := omamacCommand()
+		var changed bool
 		var err error
 		if args[0] == "install" {
-			err = installWaybar(dir, bin, stdout)
+			changed, err = setUpWaybar(bin, stdout)
 		} else {
-			err = uninstallWaybar(dir, stdout)
+			changed, err = takeDownWaybar(stdout)
 		}
 		if err != nil {
 			fmt.Fprintln(stderr, "omamac:", err)
 			return 1
 		}
-		restartWaybar(stdout)
+		saveWaybarMode(configPath, map[string]string{"install": "on", "uninstall": "off"}[args[0]])
+		if changed {
+			restartWaybar(stdout)
+		}
+		if args[0] == "install" {
+			fmt.Fprint(stdout, "\nOptional, in ~/.config/hypr/bindings.conf: a key for OmaMac's launcher\n"+
+				"  bindd = SUPER ALT, O, OmaMac, exec, "+shellQuote(bin)+" open\n"+
+				"and in ~/.config/hypr/hyprland.conf, should a popover open tiled:\n"+
+				"  windowrule = float on, match:title ^(OmaMac · .*)$\n")
+		}
 		return 0
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, waybarUsage)
@@ -267,11 +277,176 @@ func cliWaybar(args []string, stdout, stderr io.Writer) int {
 	return cliWaybarFollow(slot, stdout)
 }
 
-func waybarConfigDir() string {
-	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "waybar")
+// saveWaybarMode remembers in OmaMac's configuration whether its modules are wanted.
+func saveWaybarMode(configPath, mode string) {
+	if cfg, err := LoadConfig(configPath); err == nil && cfg.Waybar != mode {
+		cfg.Waybar = mode
+		_ = SaveConfig(configPath, cfg)
 	}
-	return homePath(".config", "waybar")
+}
+
+// waybarSearchDirs are where Waybar looks for its configuration when it is given none:
+// the user's folders, then the system's. getenv is the environment of the running
+// Waybar (started by the session, it may differ from a terminal's).
+func waybarSearchDirs(getenv func(string) string) (user, system []string) {
+	home := getenv("HOME")
+	if home == "" {
+		home = homePath()
+	}
+	if d := getenv("XDG_CONFIG_HOME"); d != "" {
+		user = append(user, filepath.Join(d, "waybar"))
+	}
+	user = append(user, filepath.Join(home, ".config", "waybar"), filepath.Join(home, "waybar"))
+	for _, d := range filepath.SplitList(getenv("XDG_CONFIG_DIRS")) {
+		if d != "" {
+			system = append(system, filepath.Join(d, "waybar"))
+		}
+	}
+	system = append(system, "/etc/xdg/waybar", "/usr/local/etc/xdg/waybar", "/usr/share/waybar")
+	return user, system
+}
+
+// runningWaybar is the command line and environment of the running Waybar: nil and
+// os.Getenv when none runs.
+func runningWaybar() (args []string, getenv func(string) string) {
+	pid := waybarPID()
+	if pid == "" {
+		return nil, os.Getenv
+	}
+	raw, _ := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+	args = strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
+	env := map[string]string{}
+	if raw, err := os.ReadFile(filepath.Join("/proc", pid, "environ")); err == nil {
+		for _, kv := range strings.Split(string(raw), "\x00") {
+			if k, v, ok := strings.Cut(kv, "="); ok {
+				env[k] = v
+			}
+		}
+	}
+	return args, func(k string) string {
+		if v, ok := env[k]; ok {
+			return v
+		}
+		return os.Getenv(k)
+	}
+}
+
+// waybarArgs is the command line of the running Waybar, nil when none runs.
+func waybarArgs() []string {
+	args, _ := runningWaybar()
+	return args
+}
+
+// waybarPID is the process ID of the running Waybar, "" when none runs.
+func waybarPID() string {
+	if goos != "linux" {
+		return ""
+	}
+	dirs, _ := os.ReadDir("/proc")
+	for _, d := range dirs {
+		if _, err := strconv.Atoi(d.Name()); err != nil {
+			continue
+		}
+		if comm, err := os.ReadFile(filepath.Join("/proc", d.Name(), "comm")); err == nil && strings.TrimSpace(string(comm)) == "waybar" {
+			return d.Name()
+		}
+	}
+	return ""
+}
+
+// flagValue is the value of -short x, --long x or --long=x in args.
+func flagValue(args []string, short, long string) string {
+	for i, a := range args {
+		switch {
+		case (a == short || a == long) && i+1 < len(args):
+			return args[i+1]
+		case strings.HasPrefix(a, long+"="):
+			return strings.TrimPrefix(a, long+"=")
+		}
+	}
+	return ""
+}
+
+// firstConfigIn is the first of Waybar's configuration files in dirs.
+func firstConfigIn(dirs []string) string {
+	for _, dir := range dirs {
+		for _, name := range []string{"config.jsonc", "config", "config.json"} {
+			if st, err := os.Stat(filepath.Join(dir, name)); err == nil && !st.IsDir() {
+				return filepath.Join(dir, name)
+			}
+		}
+	}
+	return ""
+}
+
+// ownedPath reports whether OmaMac may change path: the user's, but not Omarchy's own
+// files (a git checkout its updates replace).
+func ownedPath(path string) bool {
+	home, _ := os.UserHomeDir()
+	abs, _ := filepath.Abs(path)
+	if home == "" || !strings.HasPrefix(abs, home+string(filepath.Separator)) {
+		return false
+	}
+	return !strings.HasPrefix(abs, filepath.Join(home, ".local", "share", "omarchy")+string(filepath.Separator))
+}
+
+// waybarTarget is the configuration file to change: the one Waybar is given (-c) when
+// it is the user's, else the user's own; a system configuration is copied into the
+// user's folder first, which Waybar then reads instead.
+func waybarTarget(args []string, user, system []string, out io.Writer) (string, error) {
+	if given := flagValue(args, "-c", "--config"); given != "" {
+		if !ownedPath(given) {
+			return "", fmt.Errorf("Waybar runs with -c %s, which is not yours to change: add %q to its \"include\" and %s to \"modules-right\"",
+				given, filepath.Join(user[0], waybarModulesFile), strings.Join(waybarModuleNames(), ", "))
+		}
+		return given, nil
+	}
+	if own := firstConfigIn(user); own != "" {
+		return own, nil
+	}
+	sys := firstConfigIn(system)
+	if sys == "" {
+		return "", errors.New("Waybar's configuration not found")
+	}
+	text, err := os.ReadFile(sys)
+	if err != nil {
+		return "", err
+	}
+	dst := filepath.Join(user[0], "config.jsonc")
+	if err := os.MkdirAll(user[0], 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dst, text, 0o644); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(out, "✓ %s: a copy of %s, which Waybar reads from now on\n", dst, sys)
+	return dst, nil
+}
+
+// setUpWaybar adds OmaMac's modules to the configuration Waybar uses; changed: Waybar
+// has to read it again.
+func setUpWaybar(bin string, out io.Writer) (bool, error) {
+	args, getenv := runningWaybar()
+	user, system := waybarSearchDirs(getenv)
+	cfg, err := waybarTarget(args, user, system, out)
+	if err != nil {
+		return false, err
+	}
+	return installWaybar(cfg, bin, out)
+}
+
+// takeDownWaybar takes them out again.
+func takeDownWaybar(out io.Writer) (bool, error) {
+	args, getenv := runningWaybar()
+	user, system := waybarSearchDirs(getenv)
+	cfg := flagValue(args, "-c", "--config")
+	if cfg == "" {
+		cfg = firstConfigIn(user)
+	}
+	if cfg == "" || !ownedPath(cfg) {
+		return false, nil
+	}
+	return uninstallWaybar(cfg, firstConfigIn(system), out)
 }
 
 // omamacCommand is how Waybar runs OmaMac: the command on the PATH when it is this
@@ -410,44 +585,38 @@ func waybarCSS() string {
 	return waybarCSSStart + "\n" + strings.Join(ids, ",\n") + " {\n  margin: 0 7.5px;\n}\n" + waybarCSSEnd + "\n"
 }
 
-// waybarConfigFile is Waybar's configuration in dir.
-func waybarConfigFile(dir string) string {
-	for _, name := range []string{"config.jsonc", "config", "config.json"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return filepath.Join(dir, name)
-		}
-	}
-	return ""
-}
-
-func installWaybar(dir, bin string, out io.Writer) error {
-	cfg := waybarConfigFile(dir)
-	if cfg == "" {
-		return fmt.Errorf("no Waybar configuration in %s", dir)
-	}
+// installWaybar puts OmaMac's modules into the configuration cfg: their definitions
+// next to it (omamac.jsonc, running bin), their names first in modules-right, their
+// spacing in its style.css. changed: something was written.
+func installWaybar(cfg, bin string, out io.Writer) (changed bool, err error) {
+	dir := filepath.Dir(cfg)
 	modules := filepath.Join(dir, waybarModulesFile)
-	if err := os.WriteFile(modules, []byte(waybarModules(bin)), 0o644); err != nil {
-		return err
+	if old, _ := os.ReadFile(modules); string(old) != waybarModules(bin) {
+		if err := os.WriteFile(modules, []byte(waybarModules(bin)), 0o644); err != nil {
+			return false, err
+		}
+		changed = true
+		fmt.Fprintf(out, "✓ %s: the modules (running %s)\n", modules, bin)
 	}
-	fmt.Fprintf(out, "✓ %s: the modules (running %s)\n", modules, bin)
 
 	text, err := os.ReadFile(cfg)
 	if err != nil {
-		return err
+		return changed, err
 	}
-	changed, err := addToWaybarConfig(string(text), modules)
+	edited, err := addToWaybarConfig(string(text), modules)
 	if err != nil {
-		return fmt.Errorf("%s: %v – add %q to \"include\" and %s to \"modules-right\" yourself",
+		return changed, fmt.Errorf("%s: %v – add %q to \"include\" and %s to \"modules-right\" yourself",
 			cfg, err, modules, strings.Join(waybarModuleNames(), ", "))
 	}
-	if changed != string(text) {
+	if edited != string(text) {
 		backup := fmt.Sprintf("%s.omamac-backup-%s", cfg, time.Now().Format("20060102-150405"))
 		if err := os.WriteFile(backup, text, 0o644); err != nil {
-			return err
+			return changed, err
 		}
-		if err := os.WriteFile(cfg, []byte(changed), 0o644); err != nil {
-			return err
+		if err := os.WriteFile(cfg, []byte(edited), 0o644); err != nil {
+			return changed, err
 		}
+		changed = true
 		fmt.Fprintf(out, "✓ %s: OmaMac first in modules-right (backup: %s)\n", cfg, filepath.Base(backup))
 	} else {
 		fmt.Fprintf(out, "✓ %s: OmaMac is in it already\n", cfg)
@@ -461,27 +630,31 @@ func installWaybar(dir, bin string, out io.Writer) error {
 			_ = f.Close()
 		}
 		if err == nil {
+			changed = true
 			fmt.Fprintf(out, "✓ %s: spacing of the modules\n", css)
 		}
 	}
-	fmt.Fprint(out, "\nOptional, in ~/.config/hypr/bindings.conf: a key for OmaMac's launcher\n"+
-		"  bindd = SUPER ALT, O, OmaMac, exec, "+shellQuote(bin)+" open\n"+
-		"and in ~/.config/hypr/hyprland.conf, should a popover open tiled:\n"+
-		"  windowrule = float on, match:title ^(OmaMac · .*)$\n")
-	return nil
+	return changed, nil
 }
 
-func uninstallWaybar(dir string, out io.Writer) error {
+// uninstallWaybar takes OmaMac's modules out of cfg again. A configuration that is then
+// the system's (system, which install copied) is removed, so Waybar reads the system's.
+func uninstallWaybar(cfg, system string, out io.Writer) (changed bool, err error) {
+	dir := filepath.Dir(cfg)
 	modules := filepath.Join(dir, waybarModulesFile)
-	if cfg := waybarConfigFile(dir); cfg != "" {
-		text, err := os.ReadFile(cfg)
-		if err != nil {
-			return err
-		}
-		if changed := removeFromWaybarConfig(string(text), modules); changed != string(text) {
-			if err := os.WriteFile(cfg, []byte(changed), 0o644); err != nil {
-				return err
+	if text, err := os.ReadFile(cfg); err == nil {
+		edited := removeFromWaybarConfig(string(text), modules)
+		if sys, err := os.ReadFile(system); system != "" && err == nil && string(sys) == edited {
+			if err := os.Remove(cfg); err != nil {
+				return changed, err
 			}
+			changed = true
+			fmt.Fprintf(out, "✓ %s removed: Waybar reads %s again\n", cfg, system)
+		} else if edited != string(text) {
+			if err := os.WriteFile(cfg, []byte(edited), 0o644); err != nil {
+				return changed, err
+			}
+			changed = true
 			fmt.Fprintf(out, "✓ %s: OmaMac's modules taken out\n", cfg)
 		}
 	}
@@ -499,15 +672,81 @@ func uninstallWaybar(dir string, out io.Writer) error {
 					start--
 				}
 				if err := os.WriteFile(css, []byte(s[:start]+s[end:]), 0o644); err == nil {
+					changed = true
 					fmt.Fprintf(out, "✓ %s: OmaMac's styles taken out\n", css)
 				}
 			}
 		}
 	}
 	if err := os.Remove(modules); err == nil {
+		changed = true
 		fmt.Fprintf(out, "✓ %s removed\n", modules)
 	}
-	return nil
+	return changed, nil
+}
+
+// autoWaybar sets Waybar up as OmaMac starts on Linux (Config.Waybar ""/"on"): once
+// Waybar runs, its configuration gets OmaMac's modules, or this program's path anew
+// after an update; Waybar restarts only when something changed.
+func (a *App) autoWaybar(mode string) {
+	if goos != "linux" || mode == "off" {
+		return
+	}
+	for i := 0; waybarArgs() == nil; i++ { // Waybar may start after OmaMac
+		if i == 20 {
+			return
+		}
+		time.Sleep(3 * time.Second)
+	}
+	var log bytes.Buffer
+	changed, err := setUpWaybar(omamacCommand(), &log)
+	if err == nil && changed {
+		restartWaybar(&log)
+	}
+	a.updateUI(func() {
+		if err != nil {
+			logf("waybar", "not set up: %v", err)
+			if mode == "" {
+				a.toast("⚠️ Waybar: " + err.Error())
+			}
+			return
+		}
+		if changed {
+			logf("waybar", "set up: %s", strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
+		}
+		if a.Config.Waybar == "" {
+			a.Config.Waybar = "on"
+			_ = SaveConfig(a.ConfigPath, a.Config)
+			a.toast(T("OmaMac zeigt seine Menüleisten-Einträge jetzt in Waybar (abschalten: Einstellungen)"))
+		}
+	})
+}
+
+// setWaybar switches the Waybar modules on or off (settings).
+func (a *App) setWaybar(on bool) {
+	mode := map[bool]string{true: "on", false: "off"}[on]
+	a.Config.Waybar = mode
+	_ = SaveConfig(a.ConfigPath, a.Config)
+	go func() {
+		var log bytes.Buffer
+		var changed bool
+		var err error
+		if on {
+			changed, err = setUpWaybar(omamacCommand(), &log)
+		} else {
+			changed, err = takeDownWaybar(&log)
+		}
+		if err == nil && changed {
+			restartWaybar(&log)
+		}
+		a.updateUI(func() {
+			if err != nil {
+				a.toast("⚠️ Waybar: " + err.Error())
+				return
+			}
+			logf("waybar", "%s: %s", mode, strings.ReplaceAll(strings.TrimSpace(log.String()), "\n", " · "))
+		})
+	}()
 }
 
 // restartWaybar makes Waybar read its configuration again: Omarchy's way, else SIGUSR2.

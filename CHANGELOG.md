@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.15.1
+
+- **Waybar sets itself up (Linux):** As OmaMac starts and Waybar runs, OmaMac adds its modules to Waybar itself. Before, you had to run `omamac waybar install`, which found no configuration on some systems.
+  - It finds the configuration Waybar really reads: the one given with `-c`, the user's, or the system's (`/etc/xdg/waybar`), looked up with Waybar's own environment. A system configuration is first copied to `~/.config/waybar`.
+  - Waybar restarts only when something changed, for example after an update moved OmaMac.
+  - A switch under Settings › Waybar turns the modules off and on. `omamac waybar uninstall` takes them out and keeps OmaMac from adding them again.
+
 ## 1.15.0
 
 - **OmaMac on Linux (Omarchy):** Releases now include Linux builds (amd64, arm64). `curl -fsSL https://github.com/diver80/omamac/releases/latest/download/install.sh | sh` installs OmaMac with the `omamac` command, and it updates itself.

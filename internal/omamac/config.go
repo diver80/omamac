@@ -56,6 +56,9 @@ type Config struct {
 	LauncherAgent  string `json:"launcher_agent,omitempty"`
 	Terminal       string `json:"terminal,omitempty"`
 	LauncherWidget bool   `json:"launcher_widget,omitempty"`
+	// Waybar (Linux): "" OmaMac adds its modules to Waybar as it starts, then "on";
+	// "off" when the user took them out (waybar.go).
+	Waybar string `json:"waybar,omitempty"`
 
 	// DashboardOrder is the order of the dashboard's tiles (panel IDs; panels not in it follow).
 	DashboardOrder []string `json:"dashboard_order,omitempty"`

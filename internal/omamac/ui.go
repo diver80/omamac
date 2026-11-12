@@ -398,6 +398,7 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	// 5. Start background ticker to refresh panel data commands
 	go a.backgroundRefreshLoop()
 	go a.watchBarSlots()
+	go a.autoWaybar(a.Config.Waybar)
 }
 
 // syncMainTray shows OmaMac's own menu bar item, unless its Waybar module does (Linux).
