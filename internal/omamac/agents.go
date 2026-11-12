@@ -126,7 +126,7 @@ func loginShellPath() string {
 	loginPathOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, "/bin/zsh", "-lc", `printf %s "$PATH"`).Output()
+		out, err := exec.CommandContext(ctx, scriptShell(), "-lc", `printf %s "$PATH"`).Output()
 		if err == nil {
 			loginPath = strings.TrimSpace(string(out))
 		}
@@ -213,9 +213,21 @@ func (a *App) askAgent(prompt string, images []string) {
 // Terminals the agents can run in, by the name of their app.
 var terminalApps = []string{"Ghostty", "iTerm", "Terminal"}
 
-// installedTerminals lists the terminals there are; Terminal always is.
+// installedTerminals lists the terminals there are; Terminal always is on macOS. On
+// Linux they are the commands on the PATH (platform.go).
 func installedTerminals() []string {
 	var out []string
+	if goos != "darwin" {
+		for _, name := range linuxTerminals {
+			if _, err := exec.LookPath(linuxTerminalProgram(name)); err == nil {
+				out = append(out, name)
+			}
+		}
+		if len(out) == 0 {
+			out = append(out, "xterm")
+		}
+		return out
+	}
 	for _, name := range terminalApps {
 		if name == "Terminal" || terminalInstalled(name) {
 			out = append(out, name)
@@ -235,11 +247,19 @@ func terminalInstalled(name string) bool {
 
 // terminal is the one chosen in the settings, else Terminal: every Mac has it, and it
 // runs a script opened with it without asking for any permission.
-func (a *App) terminal() string {
-	for _, name := range installedTerminals() {
-		if name == a.Config.Terminal {
+func (a *App) terminal() string { return chooseTerminal(a.Config.Terminal) }
+
+// chooseTerminal is configured when it is installed, else the default: Terminal on
+// macOS, the first one found elsewhere (the system's, on Omarchy).
+func chooseTerminal(configured string) string {
+	terms := installedTerminals()
+	for _, name := range terms {
+		if name == configured {
 			return name
 		}
+	}
+	if goos != "darwin" {
+		return terms[0]
 	}
 	return "Terminal"
 }
@@ -261,6 +281,13 @@ func openInTerminal(ag agentInfo, term, ws, binDir string, args []string) error 
 	if err := os.Chmod(f.Name(), 0o700); err != nil {
 		return err
 	}
+	if goos != "darwin" { // a Linux terminal runs as long as its window: don't wait for it
+		if err := startDetached(terminalCommand(term, f.Name())); err != nil {
+			_ = os.Remove(f.Name())
+			return fmt.Errorf("%s: %v", term, err)
+		}
+		return nil
+	}
 	if out, err := terminalCommand(term, f.Name()).CombinedOutput(); err != nil {
 		_ = os.Remove(f.Name())
 		return fmt.Errorf("%s: %v %s", term, err, strings.TrimSpace(string(out)))
@@ -272,6 +299,9 @@ func openInTerminal(ag agentInfo, term, ws, binDir string, args []string) error 
 // AppleScript (a script opened with it would ask first); Terminal and iTerm run a
 // .command file opened with them. macOS asks once whether OmaMac may control Ghostty.
 func terminalCommand(term, script string) *exec.Cmd {
+	if goos != "darwin" {
+		return linuxTerminalCommand(term, script)
+	}
 	if term == "Ghostty" {
 		// The limit covers macOS's first question whether OmaMac may control Ghostty, too.
 		as := `with timeout of 90 seconds
@@ -296,7 +326,7 @@ func appleScriptString(s string) string {
 // folder, puts the omamac command on the PATH and replaces itself with the agent.
 func agentScript(workspace, binDir, program string, args []string, title string) string {
 	var b strings.Builder
-	b.WriteString("#!/bin/zsh -l\n")
+	b.WriteString("#!" + scriptShell() + " -l\n")
 	b.WriteString("# Written by OmaMac to start a coding agent; it deletes itself.\n")
 	b.WriteString(`rm -f -- "$0"` + "\n")
 	b.WriteString("cd -- " + shellQuote(workspace) + " || exit 1\n")

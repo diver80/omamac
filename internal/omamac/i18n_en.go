@@ -204,6 +204,7 @@ var enMessages = map[string]string{
 	// Launcher
 	"OmaMac Schnellstart":                   "OmaMac Launcher",
 	"OmaMac – Übersicht & Wal-Panel öffnen": "OmaMac – open the overview & launcher",
+	"OmaMac starten":                        "Start OmaMac",
 	"Aktives Fenster anordnen":              "Arrange the active window",
 	"Links 50 %":                            "Left 50 %",
 	"Rechts 50 %":                           "Right 50 %",

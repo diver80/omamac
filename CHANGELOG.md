@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.15.0
+
+- **OmaMac on Linux (Omarchy):** Releases now include Linux builds (amd64, arm64). `curl -fsSL https://github.com/diver80/omamac/releases/latest/download/install.sh | sh` installs OmaMac with the `omamac` command, and it updates itself.
+  - **Waybar:** `omamac waybar install` shows the menu bar items as Waybar modules with their text, because Waybar's tray shows only icons. A click opens the panel's popover, and `⌘` opens the launcher. The configuration is backed up first, and `omamac waybar uninstall` takes the modules out again.
+  - **`omamac open`** opens the launcher, a panel or the main window of the running app, so you can bind it to a key in Hyprland. A second start of OmaMac goes to the running app.
+  - Scripts run in zsh if it is installed, else in bash (Omarchy has no zsh). Agents open in the system's terminal, images are converted without `sips`, and copying uses the system clipboard.
+- macOS is unchanged.
+
 ## 1.14.0
 
 - **Antigravity in the agent limits:** When Antigravity (`agy`) is installed, the agent limits module also shows its quota.

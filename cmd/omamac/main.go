@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
@@ -29,11 +30,16 @@ func main() {
 	if *checkFile != "" {
 		os.Exit(omamac.RunCLI(*configPath, []string{"check", *checkFile}, os.Stdout, os.Stderr))
 	}
-	if flag.NArg() > 0 {
+	// Linux: `omamac open …` (Waybar's modules, keys) goes to the running app, or starts it.
+	openCmd := runtime.GOOS == "linux" && flag.Arg(0) == "open"
+	if flag.NArg() > 0 && !openCmd {
 		os.Exit(omamac.RunCLI(*configPath, flag.Args(), os.Stdout, os.Stderr))
 	}
 
 	mygo.App.SetName("OmaMac")
+	if runtime.GOOS == "linux" && !mygo.App.RequestSingleInstanceLock() {
+		return // the running app got the command line
+	}
 	if mygo.App.Version() == "" {
 		mygo.App.SetVersion("dev")
 	}
@@ -51,6 +57,7 @@ func main() {
 
 	// .omamac files opened from Finder (see fileAssociations in mygo.json) go to the import
 	mygo.App.OnOpenFile(func(path string) { appState.OpenImportFile(path) })
+	mygo.App.OnSecondInstance(func(args []string, _ string) { appState.HandleOpen(args) })
 
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
@@ -81,6 +88,9 @@ func main() {
 		appState.StartDesktopServices(studioWin)
 		if *startWalOnly {
 			appState.ToggleWalPanel()
+		}
+		if openCmd {
+			appState.HandleOpen(flag.Args())
 		}
 	})
 

@@ -130,7 +130,7 @@ func (a *App) runPanelAction(p *PanelSpec, act PanelAction) {
 	}
 	if act.Command != "" {
 		logf("panel", "%s: action %q", p.ID, act.Label)
-		cmd := exec.Command("/bin/zsh", "-c", act.Command)
+		cmd := exec.Command(scriptShell(), "-c", act.Command)
 		cmd.Env = append(cmd.Environ(), panelEnv(a.Vault, a.Jira)...)
 		if cmd.Start() == nil {
 			go func() { _ = cmd.Wait() }() // reap the process (no zombies)

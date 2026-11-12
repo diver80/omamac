@@ -95,7 +95,7 @@ func SavePastedImage(png []byte) (string, error) {
 
 // LoadAIImage reads an image for sending. PNG, JPEG and GIF within the size
 // limits go as they are; anything else (HEIC, WebP, TIFF, large screenshots)
-// is converted to a JPEG of at most maxImageSide pixels with macOS's sips.
+// is converted to a JPEG of at most maxImageSide pixels (convertImage).
 func LoadAIImage(path string) (AIImage, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -114,10 +114,8 @@ func LoadAIImage(path string) (AIImage, error) {
 		return AIImage{}, err
 	}
 	out := filepath.Join(dir, fmt.Sprintf("%s-%d.jpg", strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), time.Now().UnixNano()))
-	cmd := exec.Command("/usr/bin/sips", "-s", "format", "jpeg", "-s", "formatOptions", "82",
-		"-Z", fmt.Sprint(maxImageSide), path, "--out", out)
-	if msg, err := cmd.CombinedOutput(); err != nil {
-		return AIImage{}, fmt.Errorf(T("Bild %s lässt sich nicht umwandeln: %v %s"), filepath.Base(path), err, strings.TrimSpace(string(msg)))
+	if err := convertImage(path, out, maxImageSide); err != nil {
+		return AIImage{}, fmt.Errorf(T("Bild %s lässt sich nicht umwandeln: %v %s"), filepath.Base(path), err, "")
 	}
 	data, err = os.ReadFile(out)
 	if err != nil {

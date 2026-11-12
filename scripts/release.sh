@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds OmaMac (macOS Universal), publishes the signed release on GitHub
-# (diver80/omamac, read by the in-app auto-updater) and updates the Homebrew cask
-# in diver80/homebrew-tap.
+# Builds OmaMac (macOS Universal, Linux amd64/arm64), publishes the signed release on
+# GitHub (diver80/omamac, read by the in-app auto-updater and install.sh) and updates the
+# Homebrew cask in diver80/homebrew-tap.
 #
 #   ./scripts/release.sh            # version from mygo.json
 #
@@ -32,9 +32,9 @@ echo "▶ Tag ${TAG} & push"
 git rev-parse "${TAG}" >/dev/null 2>&1 || git tag -a "${TAG}" -m "Release ${TAG}"
 git push github HEAD "${TAG}"
 
-echo "▶ Build darwin/universal + upload to draft release"
+echo "▶ Build darwin/universal, linux/amd64, linux/arm64 + upload to draft release"
 rm -rf build build.noindex
-go tool mygo build -platform darwin/universal -upload
+go tool mygo build -platform darwin/universal,linux/amd64,linux/arm64 -upload
 
 echo "▶ Publish release ${TAG} (makes it 'latest' for the auto-updater)"
 gh release edit "${TAG}" --repo "${REPO}" --draft=false --latest

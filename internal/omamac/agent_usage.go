@@ -47,8 +47,12 @@ var readClaudeLogin = claudeLoginFromSystem
 // claudeLoginFromSystem reads Claude Code's login: from the keychain, else from its
 // credentials file.
 func claudeLoginFromSystem(ctx context.Context) (*claudeLogin, error) {
-	raw, err := exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password",
-		"-s", "Claude Code-credentials", "-w").Output()
+	var raw []byte
+	err := errNoClaudeLogin // Linux: Claude Code keeps it in the file alone
+	if goos == "darwin" {
+		raw, err = exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password",
+			"-s", "Claude Code-credentials", "-w").Output()
+	}
 	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
 		home, _ := os.UserHomeDir()
 		if raw, err = os.ReadFile(filepath.Join(home, ".claude", ".credentials.json")); err != nil {

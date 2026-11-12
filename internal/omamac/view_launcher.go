@@ -82,6 +82,9 @@ func (a *App) launcherItems(query string) []launchItem {
 		})
 	}
 	for _, tl := range windowTiles {
+		if goos != "darwin" {
+			break // AppleScript moves the windows; Hyprland and the others tile their own
+		}
 		tl := tl
 		all = append(all, launchItem{
 			kind: launchWindow, key: "tile-" + string(tl.layout), title: T(tl.title), glyph: tl.glyph,

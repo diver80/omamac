@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -754,12 +753,6 @@ func RefreshAtlassianStatusPanel(ctx context.Context, p *PanelSpec) {
 	p.Rows = rows
 }
 
-func copyToMacClipboard(text string) {
-	cmd := exec.Command("pbcopy")
-	cmd.Stdin = strings.NewReader(text)
-	_ = cmd.Run()
-}
-
 // OpenEmbeddedTicketWindow opens a native WebKit window for the selected Jira issue,
 // stripping bloated Atlassian navigation headers just like jira-quick-access.
 func (a *App) OpenEmbeddedTicketWindow(iss JiraIssue) {
@@ -932,12 +925,12 @@ func (a *App) renderJiraQuickAccessModule(c *ui.Context, p *PanelSpec, onClose f
 								pillBadge(c, strings.ToUpper(issCopy.StatusName), catBadgeCol.Alpha(0.20), catBadgeCol)
 								ui.Spacer(c)
 								if ui.Button(c.Key("jira-key-"+issCopy.Key), "📋 Key").Tooltip(T("Ticket-Key kopieren")).Clicked() {
-									copyToMacClipboard(issCopy.Key)
+									copyText(issCopy.Key)
 									a.toast(T("Kopiert: ") + issCopy.Key)
 								}
 								if ui.Button(c.Key("jira-br-"+issCopy.Key), "🌿 Branch").Tooltip(T("Git-Branch-Namen kopieren: ") + issCopy.GitBranchName()).Clicked() {
 									br := issCopy.GitBranchName()
-									copyToMacClipboard(br)
+									copyText(br)
 									a.toast(T("Git-Branch kopiert: ") + br)
 								}
 								if ui.Button(c.Key("jira-ext-"+issCopy.Key), "↗").Tooltip(T("Im Standard-Browser öffnen")).Clicked() {

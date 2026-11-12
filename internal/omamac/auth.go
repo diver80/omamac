@@ -142,12 +142,19 @@ func InspectAntigravityAuth(cfg *Config) AntigravityStatus {
 	return status
 }
 
-// TriggerAntigravityLogin opens macOS Terminal to run interactive `agy` OAuth login if re-auth is needed.
+// TriggerAntigravityLogin opens macOS Terminal (on Linux the chosen terminal) to run
+// interactive `agy` OAuth login if re-auth is needed.
 func TriggerAntigravityLogin(cfg *Config) error {
 	st := InspectAntigravityAuth(cfg)
 	bin := st.CLIPath
 	if bin == "" {
 		bin = "agy"
+	}
+	if goos != "darwin" {
+		if p, err := exec.LookPath(bin); err == nil {
+			bin = p
+		}
+		return startDetached(terminalCommand(chooseTerminal(cfg.Terminal), bin))
 	}
 	script := fmt.Sprintf(`tell application "Terminal"
 	activate

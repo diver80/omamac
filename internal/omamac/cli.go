@@ -25,6 +25,9 @@ const cliUsage = `usage: omamac [-config file] <command>
                           the result and a PNG preview; exit code 1 when the panel fails
   vars                    the variables panels get (names and descriptions, never values)
   log [-n 40] [panel-id]  OmaMac's recent log lines, of one panel when an id is given
+  waybar install          Linux (Omarchy): the menu bar items as Waybar modules
+  open [N | studio]       Linux: open the launcher, the Nth menu bar item or the main window
+                          of the running app (or start it)
   help                    this text
 
 Without a command, OmaMac starts as the menu bar app.
@@ -68,6 +71,11 @@ func RunCLI(configPath string, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, l)
 		}
 		return 0
+	case "waybar":
+		return cliWaybar(args[1:], stdout, stderr)
+	case "open":
+		fmt.Fprintln(stderr, "omamac open: on macOS, click the menu bar item")
+		return 2
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, cliUsage)
 		return 0

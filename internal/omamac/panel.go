@@ -229,7 +229,7 @@ func (p *PanelSpec) RunDataRefresh(ctx context.Context, extraEnv ...string) erro
 	defer cancel()
 
 	start := time.Now()
-	cmd := exec.CommandContext(runCtx, "/bin/zsh", "-c", cmdStr)
+	cmd := exec.CommandContext(runCtx, scriptShell(), "-c", cmdStr)
 	cmd.Env = append(os.Environ(), extraEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

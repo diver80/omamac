@@ -42,6 +42,29 @@ brew install --cask diver80/tap/omamac
 
 OmaMac then keeps itself up to date (signed updates from the [GitHub releases](https://github.com/diver80/omamac/releases)).
 
+### Linux (Omarchy)
+
+OmaMac runs on Linux too, made for [Omarchy](https://omarchy.org) (Hyprland and Waybar):
+
+```bash
+curl -fsSL https://github.com/diver80/omamac/releases/latest/download/install.sh | sh   # ~/.local/omamac.app and the omamac command
+omamac waybar install   # the menu bar items as Waybar modules
+```
+
+Waybar's tray shows an item's icon but not its text, so OmaMac's menu bar items become Waybar modules instead. `omamac waybar install` adds them to `~/.config/waybar` (the configuration is backed up first, and `omamac waybar uninstall` takes them out again):
+- A module shows its item's text, such as "🤖 5% · 67%".
+- Clicking a module opens the panel's popover. `⌘` opens the launcher, and a right-click opens the main window.
+- The modules follow the panels you put in the menu bar, up to six; while a module runs, that panel has no tray icon.
+
+`omamac open` opens the launcher from a key, for example `bindd = SUPER ALT, O, OmaMac, exec, omamac open` in `~/.config/hypr/bindings.conf`.
+
+On Linux:
+- Scripts run in zsh if it is installed, else in bash.
+- Agents open in the system's terminal (`xdg-terminal-exec`) or the one chosen in the settings.
+- Secrets live in the Secret Service (GNOME Keyring, KeePassXC …).
+- The window layouts of the launcher are macOS-only; Hyprland tiles windows itself.
+- Panels whose scripts call macOS commands keep failing there.
+
 ## Development
 
 ```bash
@@ -53,7 +76,7 @@ go tool mygo build -platform darwin/universal         # OmaMac.app + DMG in buil
 ./scripts/build.sh mac linux                          # only some platforms; -t runs the tests first, -o sets the output folder, -h explains
 ```
 
-`build.sh` publishes nothing. MyGo needs no cgo, so the Linux and Windows apps cross-compile on the Mac. They get a .deb, a .tar.gz with `install.sh` and a PKGBUILD, or an `OmaMac.exe` (plus an installer when NSIS is installed: `brew install makensis`). OmaMac is still made for macOS: on Linux and Windows, everything that relies on the Keychain, AppleScript or `open` does not work yet.
+`build.sh` publishes nothing. MyGo needs no cgo, so the Linux and Windows apps cross-compile on the Mac. They get a .deb, a .tar.gz with `install.sh` and a PKGBUILD, or an `OmaMac.exe` (plus an installer when NSIS is installed: `brew install makensis`). Linux is covered above; on Windows, what relies on AppleScript or the macOS terminals does not work yet.
 
 ## Release
 

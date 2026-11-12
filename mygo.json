@@ -2,12 +2,19 @@
   "name": "OmaMac",
   "slug": "omamac",
   "identifier": "de.diver80.omamac",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "copyright": "© 2026 Frank Hess",
   "main": "./cmd/omamac",
   "out": "build.noindex",
   "fileAssociations": [
-    { "ext": ["omamac"], "name": "OmaMac-Panels", "mimeType": "application/x-omamac-panels", "role": "Viewer" }
+    {
+      "ext": [
+        "omamac"
+      ],
+      "name": "OmaMac-Panels",
+      "mimeType": "application/x-omamac-panels",
+      "role": "Viewer"
+    }
   ],
   "updates": {
     "publicKey": "e4nKXYntWG3/knE9y+kgvFyXU6Ei8oZJJkm2Nh0brDo=",
@@ -18,5 +25,15 @@
     "infoPlist": {
       "LSApplicationCategoryType": "public.app-category.productivity"
     }
+  },
+  "linux": {
+    "comment": "Status panels for the top bar, launcher and coding agents",
+    "categories": [
+      "Utility"
+    ],
+    "depends": [
+      "libayatana-appindicator3-1"
+    ],
+    "command": "omamac"
   }
 }

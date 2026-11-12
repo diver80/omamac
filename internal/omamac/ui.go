@@ -60,8 +60,12 @@ type App struct {
 	walWin    *mygo.Window
 	barWin    *mygo.Window // the launcher's bar as a desktop widget (Config.LauncherWidget)
 	mainTray  *mygo.Tray
-	desktop   bool      // StartDesktopServices ran: trays and windows may be created
-	walBlurAt time.Time // when the launcher last hid because it lost the focus
+
+	// Linux: what bar.json holds, and which of Waybar's modules run (waybar.go).
+	barWritten []byte
+	barLive    barLive
+	desktop    bool      // StartDesktopServices ran: trays and windows may be created
+	walBlurAt  time.Time // when the launcher last hid because it lost the focus
 
 	activeTab StudioTab
 
@@ -384,6 +388,30 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 	}
 
 	// 3. Create main OmaMac control tray icon in macOS menu bar
+	a.barLive = liveBarSlots()
+	a.syncMainTray()
+
+	// 4. Mount all enabled status panels into the macOS menu bar (and floating windows if pinned)
+	a.syncAllPanelRuntimes()
+	mygo.App.OnQuit(removeBarState)
+
+	// 5. Start background ticker to refresh panel data commands
+	go a.backgroundRefreshLoop()
+	go a.watchBarSlots()
+}
+
+// syncMainTray shows OmaMac's own menu bar item, unless its Waybar module does (Linux).
+func (a *App) syncMainTray() {
+	if a.barLive[0] {
+		if a.mainTray != nil {
+			a.mainTray.Destroy()
+			a.mainTray = nil
+		}
+		return
+	}
+	if a.mainTray != nil {
+		return
+	}
 	if tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:      "omamac-master-tray",
 		Title:   "⌘ OmaMac",
@@ -394,12 +422,6 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 			a.ToggleWalPanel()
 		})
 	}
-
-	// 4. Mount all enabled status panels into the macOS menu bar (and floating windows if pinned)
-	a.syncAllPanelRuntimes()
-
-	// 5. Start background ticker to refresh panel data commands
-	go a.backgroundRefreshLoop()
 }
 
 // ToggleWalPanel shows or hides the Spotlight/Walker-style floating Wal-Panel.
@@ -436,6 +458,11 @@ func (a *App) showLauncher(at *mygo.Point) {
 
 func (a *App) syncAllPanelRuntimes() {
 	activeIDs := make(map[string]bool)
+	if a.desktop && goos == "linux" {
+		a.barLive = liveBarSlots()
+		a.syncMainTray()
+	}
+	slot := 0 // the panel's place among the menu bar's: its Waybar module (Linux)
 	for _, p := range a.panels {
 		activeIDs[p.ID] = true
 		rt, ok := a.runtimes[p.ID]
@@ -449,8 +476,13 @@ func (a *App) syncAllPanelRuntimes() {
 			continue // tests and `omamac -check`: no menu bar or windows
 		}
 
-		// Sync Menubar Tray
+		// Sync Menubar Tray; on Linux not while Waybar's module shows the panel.
+		inBar := false
 		if p.Enabled {
+			slot++
+			inBar = slot <= barSlots && a.barLive[slot]
+		}
+		if p.Enabled && !inBar {
 			if rt.tray == nil {
 				panelID := p.ID
 				if t, err := mygo.NewTray(mygo.TrayOptions{
@@ -468,12 +500,14 @@ func (a *App) syncAllPanelRuntimes() {
 				rt.tray.SetToolTip(T(p.Title) + " — " + T(p.Subtitle))
 			}
 		} else if rt.tray != nil {
-			if rt.flyout != nil {
-				rt.flyout.Destroy()
-				rt.flyout = nil
-			}
 			rt.tray.Destroy()
 			rt.tray = nil
+		}
+		if !p.Enabled && rt.flyout != nil {
+			if !rt.flyout.IsDestroyed() {
+				rt.flyout.Destroy()
+			}
+			rt.flyout = nil
 		}
 
 		// A changed type or HTML (Prompt 2, "Zu HTML-/Native-Ansicht") needs new windows.
@@ -534,11 +568,12 @@ func (a *App) syncAllPanelRuntimes() {
 			delete(a.runtimes, id)
 		}
 	}
+	a.writeBarState()
 }
 
 func (a *App) togglePanelFlyout(panelID string) {
 	rt, ok := a.runtimes[panelID]
-	if !ok || rt.tray == nil {
+	if !ok || (rt.tray == nil && goos != "linux") { // Linux: Waybar's module opens it, too
 		return
 	}
 	p := rt.spec
@@ -563,7 +598,7 @@ func (a *App) togglePanelFlyout(panelID string) {
 	}
 	rt.flyoutKey = windowKey(p)
 	if p.Type == PanelTypeHTML {
-		rt.flyout = mygo.NewFlyout(opts)
+		rt.flyout = a.newPanelFlyout(p, opts)
 		htmlDoc := p.HTML
 		if strings.TrimSpace(htmlDoc) == "" {
 			htmlDoc = synthesizeHTMLForPanel(p)
@@ -581,8 +616,35 @@ func (a *App) togglePanelFlyout(panelID string) {
 				}
 			})
 		})
-		rt.flyout = mygo.NewFlyout(opts)
+		rt.flyout = a.newPanelFlyout(p, opts)
 	}
+}
+
+// newPanelFlyout is a panel's popover, next to its menu bar item. Linux's trays and
+// Waybar tell no place: there it is a small window (fixed in size, so Hyprland floats
+// it), which goes as it loses the focus.
+func (a *App) newPanelFlyout(p *PanelSpec, opts mygo.FlyoutOptions) *mygo.Window {
+	if goos != "linux" {
+		return mygo.NewFlyout(opts)
+	}
+	w := mygo.NewWindow(mygo.WindowOptions{
+		Title:         "OmaMac · " + T(p.Title),
+		Width:         opts.Width,
+		Height:        opts.Height,
+		Frameless:     true,
+		DisableResize: true,
+		AlwaysOnTop:   true,
+		SkipTaskbar:   true,
+		Vibrancy:      opts.Vibrancy,
+		Content:       opts.Content,
+	})
+	w.OnBlur(func() {
+		if !a.quitting && !w.IsDestroyed() && w.IsVisible() {
+			w.Hide()
+		}
+	})
+	w.Focus()
+	return w
 }
 
 // createFloatingPanelWindow creates the desktop widget window of a pinned panel. Closing it
