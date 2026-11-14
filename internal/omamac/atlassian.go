@@ -1036,7 +1036,7 @@ func (a *App) renderJiraInstanceEditor(c *ui.Context, key string) {
 							_ = j.Save()
 							a.jiraInstancesChanged("")
 						}
-						ui.Text(c, inst.Name+" ("+inst.BaseURL+")").FontSize(12).Bold().Grow(1).SingleLine()
+						ui.Text(c, inst.Name+" ("+inst.BaseURL+")").FontSize(12).Bold().Grow(1).MinWidth(0).SingleLine()
 						if errTxt := instErrors[inst.ID]; errTxt != "" {
 							pillBadge(c, T("FEHLER: ")+truncateStr(errTxt, 24), t.Danger.Alpha(0.2), t.Danger)
 						} else {

@@ -289,3 +289,28 @@ func TestRenderLongPopoverAndStatusNotification(t *testing.T) {
 	p.Status = "crit"
 	app.maybeNotifyStatusChange(p, "ok")
 }
+
+func TestSettingsResponsiveWidthLayout(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	app, err := NewApp(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.activeTab = TabSettings
+	app.Jira.Instances = append(app.Jira.Instances, JiraInstanceConfig{
+		ID:       "inst-1",
+		Name:     "Demo",
+		BaseURL:  "https://demo.atlassian.net",
+		JQLQuery: defaultJiraJQL,
+		Enabled:  true,
+	})
+	_ = app.Vault.Set("MYDEALZ_KEYWORD", "3D Printer", "Filter keyword for mydealz")
+
+	for _, sz := range [][2]int{{1320, 880}, {2200, 1000}} {
+		img := ui.Render(app.RenderStudioView, sz[0], sz[1], 1.0)
+		if img == nil || img.Bounds().Dx() != sz[0] || img.Bounds().Dy() != sz[1] {
+			t.Fatalf("unexpected image bounds for %dx%d: %v", sz[0], sz[1], img.Bounds())
+		}
+	}
+}

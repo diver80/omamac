@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.1
+
+- **Settings responsive full-width layout:** Removed the `860 px` width cap on the Settings page so sections fill the full content width like all other tabs, and automatically arrange into two balanced columns on wide monitors (`>= 1320 px` content width). Also improved width flexibility on Vault inputs and Jira instance headers.
+
 ## 1.16.0
 
 - **Panels & Popover UI:**

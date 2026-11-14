@@ -12,22 +12,50 @@ import (
 )
 
 // renderTabSettings groups the settings in sections (AI, Jira instances, vault, general).
+// Uses the full content width like the other tabs, and switches to two balanced columns
+// on wide screens so forms stay readable without wasting screen space.
 // Every change is saved as it is made; the shortcut takes effect with Enter.
 func (a *App) renderTabSettings(c *ui.Context) {
+	winW, _ := c.Size()
+	sidebarW := float32(200)
+	if a.sidebarCollapsed() {
+		sidebarW = 52
+	}
+	twoCols := winW-sidebarW >= 1320
+
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(860).Padding(20).Gap(16).Children(func() {
+		ui.Column(c).FillWidth().Padding(20).Gap(16).Children(func() {
 			pageHeader(c, T("Einstellungen"), "", nil)
-			a.renderAISettings(c)
-			if a.Jira != nil {
-				section(c, "cfg-jira", T("Jira-Instanzen"),
-					T("Zugänge für alle Jira-Module und für $JIRA_<NAME>_* in eigenen Panels. Ausgeschaltet fehlt eine Instanz überall; was ein einzelnes Modul zeigt, steht in dessen Konfiguration."),
-					func() { a.renderJiraInstanceEditor(c, "cfg-jira") })
+			if twoCols {
+				ui.Row(c).FillWidth().Gap(16).AlignItems(ui.Start).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Gap(16).Children(func() {
+						a.renderAISettings(c)
+						a.renderLauncherSettings(c)
+						a.renderGeneralSettings(c)
+					})
+					ui.Column(c).Grow(1).MinWidth(0).Gap(16).Children(func() {
+						a.renderJiraSettings(c)
+						a.renderVaultSettings(c)
+					})
+				})
+			} else {
+				a.renderAISettings(c)
+				a.renderJiraSettings(c)
+				a.renderVaultSettings(c)
+				a.renderLauncherSettings(c)
+				a.renderGeneralSettings(c)
 			}
-			a.renderVaultSettings(c)
-			a.renderLauncherSettings(c)
-			a.renderGeneralSettings(c)
 		})
 	})
+}
+
+func (a *App) renderJiraSettings(c *ui.Context) {
+	if a.Jira == nil {
+		return
+	}
+	section(c, "cfg-jira", T("Jira-Instanzen"),
+		T("Zugänge für alle Jira-Module und für $JIRA_<NAME>_* in eigenen Panels. Ausgeschaltet fehlt eine Instanz überall; was ein einzelnes Modul zeigt, steht in dessen Konfiguration."),
+		func() { a.renderJiraInstanceEditor(c, "cfg-jira") })
 }
 
 func (a *App) renderAISettings(c *ui.Context) {
@@ -188,9 +216,9 @@ func (a *App) renderVaultSettings(c *ui.Context) {
 			}
 
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.TextInput(c.Key("vault-new-key"), &a.vaultNewKey).Placeholder("NAME").Width(180)
-				ui.TextInput(c.Key("vault-new-val"), &a.vaultNewVal).Password().Placeholder(T("Wert")).Width(180)
-				ui.TextInput(c.Key("vault-new-desc"), &a.vaultNewDesc).Placeholder(T("Beschreibung für die KI (optional)")).Grow(1)
+				ui.TextInput(c.Key("vault-new-key"), &a.vaultNewKey).Placeholder("NAME").Grow(1).MinWidth(100)
+				ui.TextInput(c.Key("vault-new-val"), &a.vaultNewVal).Password().Placeholder(T("Wert")).Grow(1).MinWidth(100)
+				ui.TextInput(c.Key("vault-new-desc"), &a.vaultNewDesc).Placeholder(T("Beschreibung für die KI (optional)")).Grow(2).MinWidth(120)
 				if ui.Button(c.Key("vault-add-btn"), T("Hinzufügen")).
 					Disabled(strings.TrimSpace(a.vaultNewKey) == "" || strings.TrimSpace(a.vaultNewVal) == "").Clicked() {
 					if a.Vault != nil {
