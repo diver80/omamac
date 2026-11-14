@@ -50,52 +50,119 @@ type PanelAction struct {
 	Style   string `json:"style,omitempty"`   // "primary", "danger", "default"
 }
 
+// PanelSnapshot keeps the restorable parts of a PanelSpec for Undo in PromptHistory.
+type PanelSnapshot struct {
+	Title          string        `json:"title,omitempty"`
+	Subtitle       string        `json:"subtitle,omitempty"`
+	Icon           string        `json:"icon,omitempty"`
+	BadgeText      string        `json:"badge_text,omitempty"`
+	Status         string        `json:"status,omitempty"`
+	Type           PanelType     `json:"type,omitempty"`
+	RefreshSeconds int           `json:"refresh_seconds,omitempty"`
+	Command        string        `json:"command,omitempty"`
+	Metrics        []PanelMetric `json:"metrics,omitempty"`
+	Rows           []PanelRow    `json:"rows,omitempty"`
+	Actions        []PanelAction `json:"actions,omitempty"`
+	HTML           string        `json:"html,omitempty"`
+}
+
 // PromptStep records each prompt in the 2-Prompt (Create -> Refine) workflow.
 type PromptStep struct {
-	Step      int    `json:"step"`
-	Prompt    string `json:"prompt"`
-	Provider  string `json:"provider"`
-	Model     string `json:"model"`
-	Timestamp string `json:"timestamp"`
+	Step      int            `json:"step"`
+	Prompt    string         `json:"prompt"`
+	Provider  string         `json:"provider"`
+	Model     string         `json:"model"`
+	Timestamp string         `json:"timestamp"`
+	Snapshot  *PanelSnapshot `json:"snapshot,omitempty"`
 }
 
 // PanelSpec defines a complete OmaMac status panel, desktop widget, or mini-app
 // (inspired by Omarchy & OmaLauncher: supports both "native" mygo/ui and "html" WebView).
 type PanelSpec struct {
-	ID             string        `json:"id"`
-	Title          string        `json:"title"`
-	Subtitle       string        `json:"subtitle"`
-	Kind           string        `json:"kind,omitempty"`          // "widget" (desktop tile), "app" (interactive view), "panel" (menubar popover)
-	GridSize       string        `json:"grid_size,omitempty"`     // e.g. "3x3" (half width) or "6x2" (full width) like OmaLauncher
-	RequiresBrew   []string      `json:"requires_brew,omitempty"` // Homebrew packages required by command (macOS equivalent of requires { pacman: [...] })
-	Icon           string        `json:"icon"`                    // Emoji or short symbol for Menubar Tray / Tile
-	BadgeText      string        `json:"badge_text"`              // Text shown next to Icon in macOS Menubar
-	MenuBarText    string        `json:"menubar_text,omitempty"`  // the user's own menu bar text; "{status}" stands for BadgeText
-	Status         string        `json:"status"`                  // "ok", "warn", "crit", "info"
-	Type           PanelType     `json:"type"`                    // "native" (mygo/ui) or "html" (WebView)
-	IsBuiltin      bool          `json:"is_builtin,omitempty"`    // True for pre-delivered system modules (not AI-editable)
-	BuiltinKind    string        `json:"builtin_kind,omitempty"`  // "atlassian-status", "jira-quick-access", "jira-activity", "jira-week"
-	Enabled        bool          `json:"enabled"`                 // Show in macOS Menubar as Tray + Flyout
-	PinnedFloating bool          `json:"pinned_floating"`         // Also pin as floating desktop HUD / Home-Screen Widget tile
-	RefreshSeconds int           `json:"refresh_seconds"`         // Auto-refresh interval in seconds (0 AI tokens used!)
-	Width          int           `json:"width"`
-	Height         int           `json:"height"`
-	Command        string        `json:"command,omitempty"` // Optional shell script to refresh data dynamically
-	Metrics        []PanelMetric `json:"metrics,omitempty"`
-	Rows           []PanelRow    `json:"rows,omitempty"`
-	Actions        []PanelAction `json:"actions,omitempty"`
-	HTML           string        `json:"html,omitempty"` // Used when Type == "html" (or hybrid preview)
-	PromptHistory  []PromptStep  `json:"prompt_history,omitempty"`
-	LastUpdated    string        `json:"last_updated,omitempty"`
-	LastCommandOut string        `json:"last_command_out,omitempty"`
-	LastCheckMsg   string        `json:"last_check_msg,omitempty"` // Output from omamac-check (owl-check equivalent)
-	Config         *ModuleConfig `json:"config,omitempty"`         // settings of a built-in module (module_config.go)
-	DashboardOff   bool          `json:"dashboard_off,omitempty"`  // not a tile on the dashboard (the third switch)
-	DashboardSize  string        `json:"dashboard_size,omitempty"` // its tile: "small", "medium", "tall" or "wide" ("" chooses)
+	ID                   string        `json:"id"`
+	Title                string        `json:"title"`
+	Subtitle             string        `json:"subtitle"`
+	Kind                 string        `json:"kind,omitempty"`          // "widget" (desktop tile), "app" (interactive view), "panel" (menubar popover)
+	GridSize             string        `json:"grid_size,omitempty"`     // e.g. "3x3" (half width) or "6x2" (full width) like OmaLauncher
+	RequiresBrew         []string      `json:"requires_brew,omitempty"` // Homebrew packages required by command (macOS equivalent of requires { pacman: [...] })
+	Icon                 string        `json:"icon"`                    // Emoji or short symbol for Menubar Tray / Tile
+	BadgeText            string        `json:"badge_text"`              // Text shown next to Icon in macOS Menubar
+	MenuBarText          string        `json:"menubar_text,omitempty"`  // the user's own menu bar text; "{status}" stands for BadgeText
+	Status               string        `json:"status"`                  // "ok", "warn", "crit", "info"
+	Type                 PanelType     `json:"type"`                    // "native" (mygo/ui) or "html" (WebView)
+	IsBuiltin            bool          `json:"is_builtin,omitempty"`    // True for pre-delivered system modules (not AI-editable)
+	BuiltinKind          string        `json:"builtin_kind,omitempty"`  // "atlassian-status", "jira-quick-access", "jira-activity", "jira-week"
+	Enabled              bool          `json:"enabled"`                 // Show in macOS Menubar as Tray + Flyout
+	PinnedFloating       bool          `json:"pinned_floating"`         // Also pin as floating desktop HUD / Home-Screen Widget tile
+	RefreshSeconds       int           `json:"refresh_seconds"`         // Auto-refresh interval in seconds (0 AI tokens used!)
+	Width                int           `json:"width"`
+	Height               int           `json:"height"`
+	Command              string        `json:"command,omitempty"` // Optional shell script to refresh data dynamically
+	Metrics              []PanelMetric `json:"metrics,omitempty"`
+	Rows                 []PanelRow    `json:"rows,omitempty"`
+	Actions              []PanelAction `json:"actions,omitempty"`
+	HTML                 string        `json:"html,omitempty"` // Used when Type == "html" (or hybrid preview)
+	PromptHistory        []PromptStep  `json:"prompt_history,omitempty"`
+	LastUpdated          string        `json:"last_updated,omitempty"`
+	LastCommandOut       string        `json:"last_command_out,omitempty"`
+	LastCheckMsg         string        `json:"last_check_msg,omitempty"`          // Output from omamac-check (owl-check equivalent)
+	Config               *ModuleConfig `json:"config,omitempty"`                  // settings of a built-in module (module_config.go)
+	DashboardOff         bool          `json:"dashboard_off,omitempty"`           // not a tile on the dashboard (the third switch)
+	DashboardSize        string        `json:"dashboard_size,omitempty"`          // its tile: "small", "medium", "tall" or "wide" ("" chooses)
+	NotifyOnStatusChange bool          `json:"notify_on_status_change,omitempty"` // send a macOS notification when status changes
 
 	// LastRunError says why the last run of Command failed ("" when it worked); the panel
 	// then shows as failed. Not saved: the next run tells again.
 	LastRunError string `json:"-"`
+}
+
+// Snapshot copies the restorable content of p so a later refinement can be undone.
+func (p *PanelSpec) Snapshot() *PanelSnapshot {
+	if p == nil {
+		return nil
+	}
+	s := &PanelSnapshot{
+		Title:          p.Title,
+		Subtitle:       p.Subtitle,
+		Icon:           p.Icon,
+		BadgeText:      p.BadgeText,
+		Status:         p.Status,
+		Type:           p.Type,
+		RefreshSeconds: p.RefreshSeconds,
+		Command:        p.Command,
+		HTML:           p.HTML,
+	}
+	if len(p.Metrics) > 0 {
+		s.Metrics = append([]PanelMetric(nil), p.Metrics...)
+	}
+	if len(p.Rows) > 0 {
+		s.Rows = append([]PanelRow(nil), p.Rows...)
+	}
+	if len(p.Actions) > 0 {
+		s.Actions = append([]PanelAction(nil), p.Actions...)
+	}
+	return s
+}
+
+// RestoreSnapshot applies a saved PanelSnapshot back onto p, keeping user placement/history.
+func (p *PanelSpec) RestoreSnapshot(s *PanelSnapshot) {
+	if p == nil || s == nil {
+		return
+	}
+	p.Title = s.Title
+	p.Subtitle = s.Subtitle
+	p.Icon = s.Icon
+	p.BadgeText = s.BadgeText
+	p.Status = s.Status
+	p.Type = s.Type
+	p.RefreshSeconds = s.RefreshSeconds
+	p.Command = s.Command
+	p.HTML = s.HTML
+	p.Metrics = append([]PanelMetric(nil), s.Metrics...)
+	p.Rows = append([]PanelRow(nil), s.Rows...)
+	p.Actions = append([]PanelAction(nil), s.Actions...)
+	p.LastRunError = ""
+	p.Normalize()
 }
 
 // commandTimeout is how long a panel's command may run before it is stopped.

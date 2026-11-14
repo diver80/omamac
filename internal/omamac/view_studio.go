@@ -24,6 +24,9 @@ func (a *App) RenderStudioView(c *ui.Context) {
 			ui.Divider(c).Vertical()
 
 			ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+				if a.activeTab != TabOverview {
+					a.dropPreviewWeb()
+				}
 				switch a.activeTab {
 				case TabDashboard:
 					a.renderTabDashboard(c)

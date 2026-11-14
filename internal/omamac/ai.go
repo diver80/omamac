@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -244,6 +245,9 @@ func (e *AIEngine) unreachableErr(providerLabel string, err error) error {
 	if providerLabel == "" {
 		providerLabel = e.ActiveProviderSummary()
 	}
+	if IsQuotaError(err) {
+		return fmt.Errorf("%w (%s): %v", ErrQuotaExceeded, providerLabel, err)
+	}
 	return fmt.Errorf(T("KI nicht erreichbar (%s): %w"), providerLabel, err)
 }
 
@@ -309,9 +313,86 @@ func claudeCLIArgs(model string) []string {
 	return append(args, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages")
 }
 
+// ErrQuotaExceeded wraps AI errors caused by exhausted credits or rate/quota limits.
+var ErrQuotaExceeded = errors.New("quota exceeded")
+
+// IsQuotaError reports whether err indicates exhausted credits, quota, or a 429 limit.
+func IsQuotaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrQuotaExceeded) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	for _, pat := range []string{
+		"resource_exhausted",
+		"credits balance is too low",
+		"insufficient_quota",
+		"quota exceeded",
+		"rate limit",
+		"status 429",
+		"http 429",
+		"429)",
+	} {
+		if strings.Contains(s, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+// claudeCLIBin returns the path to a working claude binary, or "" if unavailable.
+func claudeCLIBin(cfg *Config) string {
+	if cfg != nil {
+		if b := executableFile(cfg.ClaudeCLIPath); b != "" {
+			return b
+		}
+	}
+	if b, err := exec.LookPath("claude"); err == nil && b != "" {
+		return b
+	}
+	for _, cand := range []string{"/opt/homebrew/bin/claude", "/usr/local/bin/claude", homePath(".local", "bin", "claude")} {
+		if b := executableFile(cand); b != "" {
+			return b
+		}
+	}
+	return ""
+}
+
+// CanFallbackToClaudeCLI reports whether switching to Claude CLI is possible and not already active.
+func CanFallbackToClaudeCLI(cfg *Config) bool {
+	if cfg == nil {
+		return false
+	}
+	if cfg.ActiveProvider == ProviderClaude && cfg.ClaudeAuthMode == ClaudeAuthCLI {
+		return false
+	}
+	return claudeCLIBin(cfg) != ""
+}
+
+// friendlyAIError turns raw quota/429 responses into a clear hint for the UI while keeping short context.
+func friendlyAIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if IsQuotaError(err) {
+		return T("Antigravity-/API-Guthaben aufgebraucht (429). Wechsle auf Claude CLI oder einen anderen API-Key.")
+	}
+	return err.Error()
+}
+
 // cliErrorDetail returns the most useful part of a failed CLI's output for the error message.
 func cliErrorDetail(stdout, stderr string) string {
-	msg := strings.TrimSpace(stderr)
+	var lines []string
+	for _, l := range strings.Split(stderr, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "Warning: this sign-in can end") {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	msg := strings.Join(lines, " ")
 	if msg == "" {
 		msg = strings.TrimSpace(stdout)
 	}
@@ -480,45 +561,45 @@ Return ONLY a valid JSON array of PanelSpec objects matching this exact schema (
 		return nil, providerLabel, e.unreachableErr(providerLabel, err)
 	}
 
-	{
-		if panels, parseErr := extractPanelsFromText(rawResp); parseErr == nil && len(panels) > 0 {
-			for i, p := range panels {
-				if requestedType == "native" {
+	panels, parseErr := e.extractOrRepairPanels(ctx, rawResp, providerLabel, true)
+	if parseErr == nil && len(panels) > 0 {
+		for i, p := range panels {
+			if requestedType == "native" {
+				p.Type = PanelTypeNative
+			} else if requestedType == "html" {
+				p.Type = PanelTypeHTML
+				if strings.TrimSpace(p.HTML) == "" {
+					p.HTML = synthesizeHTMLForPanel(p)
+				}
+			} else if requestedType == "both" {
+				if i%2 == 0 {
 					p.Type = PanelTypeNative
-				} else if requestedType == "html" {
+				} else {
 					p.Type = PanelTypeHTML
 					if strings.TrimSpace(p.HTML) == "" {
 						p.HTML = synthesizeHTMLForPanel(p)
 					}
-				} else if requestedType == "both" {
-					if i%2 == 0 {
-						p.Type = PanelTypeNative
-					} else {
-						p.Type = PanelTypeHTML
-						if strings.TrimSpace(p.HTML) == "" {
-							p.HTML = synthesizeHTMLForPanel(p)
-						}
-					}
 				}
-				p.Enabled = true
-				p.Normalize()
-				p.ID = fmt.Sprintf("%s-%d", Slugify(p.Title), time.Now().Unix()%10000+int64(i))
-				p.PromptHistory = []PromptStep{
-					{
-						Step:      1,
-						Prompt:    userPrompt,
-						Provider:  string(e.Config.ActiveProvider),
-						Model:     providerLabel,
-						Timestamp: now,
-					},
-				}
-				if strings.TrimSpace(p.Command) != "" {
-					progressStep(ctx, T("Führe den Befehl von „%s“ zum ersten Mal aus …"), p.Title)
-				}
-				_ = p.RunDataRefresh(ctx, vaultEnv...)
 			}
-			return panels, providerLabel, nil
+			p.Enabled = true
+			p.Normalize()
+			p.ID = fmt.Sprintf("%s-%d", Slugify(p.Title), time.Now().Unix()%10000+int64(i))
+			if strings.TrimSpace(p.Command) != "" {
+				progressStep(ctx, T("Führe den Befehl von „%s“ zum ersten Mal aus …"), p.Title)
+			}
+			_ = p.RunDataRefresh(ctx, vaultEnv...)
+			p.PromptHistory = []PromptStep{
+				{
+					Step:      1,
+					Prompt:    userPrompt,
+					Provider:  string(e.Config.ActiveProvider),
+					Model:     providerLabel,
+					Timestamp: now,
+					Snapshot:  p.Snapshot(),
+				},
+			}
 		}
+		return panels, providerLabel, nil
 	}
 
 	return nil, providerLabel, fmt.Errorf(T("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s"), providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
@@ -550,33 +631,70 @@ Return ONLY the updated single JSON object (no markdown commentary outside JSON)
 		return nil, providerLabel, e.unreachableErr(providerLabel, err)
 	}
 
-	{
-		if panels, parseErr := extractPanelsFromText(rawResp); parseErr == nil && len(panels) > 0 {
-			updated := panels[0]
-			updated.ID = existing.ID
-			updated.Enabled = existing.Enabled
-			updated.PinnedFloating = existing.PinnedFloating
-			updated.MenuBarText = existing.MenuBarText // the user's own; the AI doesn't manage it
-			if updated.Type == PanelTypeHTML && strings.TrimSpace(updated.HTML) == "" {
-				updated.HTML = synthesizeHTMLForPanel(updated)
-			}
-			updated.PromptHistory = append(existing.PromptHistory, PromptStep{
-				Step:      stepNum,
-				Prompt:    refinePrompt,
-				Provider:  string(e.Config.ActiveProvider),
-				Model:     providerLabel,
-				Timestamp: now,
-			})
-			updated.Normalize()
-			if strings.TrimSpace(updated.Command) != "" {
-				progressStep(ctx, "%s", T("Führe den geänderten Befehl aus …"))
-			}
-			_ = updated.RunDataRefresh(ctx, vaultEnv...)
-			return updated, providerLabel, nil
+	panels, parseErr := e.extractOrRepairPanels(ctx, rawResp, providerLabel, false)
+	if parseErr == nil && len(panels) > 0 {
+		updated := panels[0]
+		updated.ID = existing.ID
+		updated.Enabled = existing.Enabled
+		updated.PinnedFloating = existing.PinnedFloating
+		updated.DashboardOff = existing.DashboardOff
+		updated.DashboardSize = existing.DashboardSize
+		updated.NotifyOnStatusChange = existing.NotifyOnStatusChange
+		updated.MenuBarText = existing.MenuBarText // the user's own; the AI doesn't manage it
+		if updated.Type == PanelTypeHTML && strings.TrimSpace(updated.HTML) == "" {
+			updated.HTML = synthesizeHTMLForPanel(updated)
 		}
+		updated.Normalize()
+		if strings.TrimSpace(updated.Command) != "" {
+			progressStep(ctx, "%s", T("Führe den geänderten Befehl aus …"))
+		}
+		_ = updated.RunDataRefresh(ctx, vaultEnv...)
+		hist := append([]PromptStep(nil), existing.PromptHistory...)
+		if len(hist) > 0 && hist[len(hist)-1].Snapshot == nil {
+			hist[len(hist)-1].Snapshot = existing.Snapshot()
+		}
+		updated.PromptHistory = append(hist, PromptStep{
+			Step:      stepNum,
+			Prompt:    refinePrompt,
+			Provider:  string(e.Config.ActiveProvider),
+			Model:     providerLabel,
+			Timestamp: now,
+			Snapshot:  updated.Snapshot(),
+		})
+		return updated, providerLabel, nil
 	}
 
 	return nil, providerLabel, fmt.Errorf(T("KI-Antwort enthielt kein gültiges Panel-JSON (%s): %s"), providerLabel, truncateStr(strings.Join(strings.Fields(rawResp), " "), 160))
+}
+
+// extractOrRepairPanels parses PanelSpec JSON; if the model emitted malformed JSON, it asks once for valid JSON.
+func (e *AIEngine) extractOrRepairPanels(ctx context.Context, rawResp, providerLabel string, wantArray bool) ([]*PanelSpec, error) {
+	panels, err := extractPanelsFromText(rawResp)
+	if err == nil && len(panels) > 0 {
+		return panels, nil
+	}
+	if !strings.ContainsAny(rawResp, "{[") {
+		return nil, err
+	}
+	progressStep(ctx, "%s", T("KI-Antwort wird korrigiert (ungültiges JSON) …"))
+	logf("ai", "malformed PanelSpec JSON from %s (%v), requesting repair", providerLabel, err)
+	shape := "a single PanelSpec JSON object"
+	if wantArray {
+		shape = "a JSON array of PanelSpec objects"
+	}
+	repairPrompt := fmt.Sprintf(`Your previous response failed JSON parsing (%v).
+Return ONLY valid %s with properly escaped strings and quotes (no markdown fences, no commentary):
+
+%s`, err, shape, truncateStr(rawResp, 12000))
+	repaired, _, repErr := e.CompleteRequest(ctx, repairPrompt, nil)
+	if repErr != nil {
+		return nil, err
+	}
+	panels, err2 := extractPanelsFromText(repaired)
+	if err2 != nil || len(panels) == 0 {
+		return nil, err
+	}
+	return panels, nil
 }
 
 func extractPanelsFromText(raw string) ([]*PanelSpec, error) {

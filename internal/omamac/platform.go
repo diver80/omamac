@@ -152,3 +152,70 @@ func homePath(rel ...string) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(append([]string{home}, rel...)...)
 }
+
+const launchAgentLabel = "de.diver80.omamac"
+
+func launchAgentPath() string {
+	return homePath("Library", "LaunchAgents", launchAgentLabel+".plist")
+}
+
+// IsLaunchAtLoginEnabled reports whether OmaMac's LaunchAgent plist exists.
+func IsLaunchAtLoginEnabled() bool {
+	if goos != "darwin" {
+		return false
+	}
+	_, err := os.Stat(launchAgentPath())
+	return err == nil
+}
+
+// SetLaunchAtLogin installs or removes the macOS LaunchAgent for OmaMac.
+func SetLaunchAtLogin(enabled bool) error {
+	if goos != "darwin" {
+		return nil
+	}
+	p := launchAgentPath()
+	if !enabled {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return writeLaunchAgentPlist(p, exe)
+}
+
+func writeLaunchAgentPlist(plistPath, exe string) error {
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+		return err
+	}
+	args := []string{exe}
+	if idx := strings.Index(exe, ".app/Contents/MacOS/"); idx >= 0 {
+		bundle := exe[:idx+4]
+		args = []string{"/usr/bin/open", "-a", bundle}
+	}
+	var argsXML strings.Builder
+	for _, a := range args {
+		a = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(a)
+		argsXML.WriteString("\t\t<string>" + a + "</string>\n")
+	}
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>%s</string>
+	<key>ProgramArguments</key>
+	<array>
+%s	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+</dict>
+</plist>
+`, launchAgentLabel, argsXML.String())
+	return os.WriteFile(plistPath, []byte(plist), 0o644)
+}

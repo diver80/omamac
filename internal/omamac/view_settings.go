@@ -294,6 +294,23 @@ func (a *App) renderGeneralSettings(c *ui.Context) {
 	t := c.Theme()
 	section(c, "cfg-general", T("Allgemein"), "", func() {
 		ui.Form(c, func() {
+			if goos == "darwin" {
+				ui.Field(c, T("Autostart"), func() {
+					ui.Column(c).Gap(4).Children(func() {
+						on := IsLaunchAtLoginEnabled()
+						if ui.Switch(c.Key("cfg-autostart"), &on).Label(T("Beim Anmelden starten")).Changed() {
+							if err := SetLaunchAtLogin(on); err != nil {
+								a.toast("⚠️ " + err.Error())
+							} else if on {
+								a.toast(T("OmaMac startet ab jetzt beim Anmelden"))
+							} else {
+								a.toast(T("Autostart deaktiviert"))
+							}
+						}
+						ui.Text(c, T("Startet OmaMac automatisch nach der macOS-Anmeldung.")).FontSize(11.5).TextColor(t.TextMuted)
+					})
+				})
+			}
 			ui.Field(c, T("Sprache"), func() {
 				ui.Column(c).Gap(4).Children(func() {
 					idx := 0
@@ -405,7 +422,9 @@ func (a *App) applyLauncherShortcut() {
 		a.shortcutText = c.LauncherShortcut
 		return
 	}
-	mygo.GlobalShortcut.UnregisterAll()
+	if c.LauncherShortcut != "" {
+		mygo.GlobalShortcut.Unregister(c.LauncherShortcut)
+	}
 	if err := mygo.GlobalShortcut.Register(next, func() { a.ToggleWalPanel() }); err != nil {
 		a.toast(T("⚠️ Kürzel „") + next + T("“ ließ sich nicht registrieren: ") + err.Error())
 		_ = mygo.GlobalShortcut.Register(c.LauncherShortcut, func() { a.ToggleWalPanel() })

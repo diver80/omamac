@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.16.0
+
+- **Panels & Popover UI:**
+  - **Scrollable panel detail view & real HTML preview:** The right panel column now scrolls cleanly with a fixed `270 px` preview height, keeping the delete action accessible at the bottom. HTML panels render in a live WebView preview with an `HTML` / `Data` switch.
+  - **Search, compact placement toggles & prompt history restore:** Filter panels live in the sidebar, toggle Menu Bar / Widget / Dashboard directly as compact pills, edit command & refresh interval in a dedicated dialog, and restore previous panel versions from the prompt history (`Restore`).
+  - **Scrollable popovers, proportional bars & action feedback:** Long popovers with metrics/rows scroll instead of overflowing, progress bars scale proportionally, and panel action commands enforce a 30 s timeout with error toast/log feedback.
+- **AI Studio & Reliability:**
+  - **Quota handling & 1-click Claude CLI fallback:** Quota / HTTP 429 errors surface an actionable hint and a 1-click button to retry with Claude CLI and set it as default; noisy CLI login warnings are stripped from error messages.
+  - **Automatic JSON repair retry & race-free refresh:** Malformed AI responses trigger one automatic JSON repair pass, and background panel refreshes operate on cloned snapshots before applying results on the UI thread.
+- **macOS & Notifications:**
+  - **Launch at login & status-change notifications:** Added a macOS LaunchAgent toggle in Settings, optional native notifications when a panel status changes (clicking jumps to the panel), non-destructive shortcut re-registration, and async discovery of `~/Applications` + Finder.
+- **Linux (`omarchy-shell`):** Added support for Omarchy's Quickshell bar alongside Waybar.
+
 ## 1.15.1
 
 - **Waybar sets itself up (Linux):** As OmaMac starts and Waybar runs, OmaMac adds its modules to Waybar itself. Before, you had to run `omamac waybar install`, which found no configuration on some systems.

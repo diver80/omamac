@@ -107,7 +107,7 @@ func (a *App) launcherItems(query string) []launchItem {
 			a.showStudio()
 		}},
 	)
-	for _, app := range a.apps {
+	for _, app := range a.macApps() {
 		app := app
 		all = append(all, launchItem{
 			kind: launchApp, key: app.ID, title: app.Title, appPath: app.Subtitle, glyph: "◻",

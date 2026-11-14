@@ -1,12 +1,17 @@
 package omamac
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
+	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+const actionTimeout = 30 * time.Second
 
 // renderNativePanelPopover renders a PanelSpec of Type == "native": in the menu bar
 // popover, the desktop widget and the preview of the main window.
@@ -52,54 +57,62 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 			ui.Text(c, T(p.Subtitle)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		}
 
-		// Metrics (two per row)
-		if len(p.Metrics) > 0 {
-			ui.Row(c).FillWidth().Gap(8).Wrap().Children(func() {
-				for idx, m := range p.Metrics {
-					mBg, mFg := statusColors(t, m.Status)
-					ui.Column(c.Key(fmt.Sprintf("m-%s-%d", p.ID, idx))).
-						Grow(1).MinWidth(150).Padding(10).Radius(8).Border(1, t.Border).Background(t.Background).Gap(4).Children(func() {
-						ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-							ui.Text(c, m.Label).FontSize(10.5).Bold().TextColor(t.TextMuted).Grow(1).SingleLine()
-							if m.Unit != "" {
-								pillBadge(c, m.Unit, mBg, mFg)
-							}
-						})
-						ui.Text(c, m.Value).FontSize(18).Bold().TextColor(mFg)
-						if m.Progress > 0 {
-							pct := m.Progress
-							if pct > 100 {
-								pct = 100
-							}
-							ui.Row(c).FillWidth().Height(5).Radius(3).Background(t.Border).Children(func() {
-								ui.Row(c).Width(float32(pct * 1.5)).FillHeight().Radius(3).Background(mFg)
+		// Scrollable body for metrics & rows so long lists never clip inside tiles or popovers
+		ui.Scroll(c.Key("pop-scroll-" + p.ID)).Grow(1).MinHeight(0).FillWidth().Children(func() {
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				// Metrics (two per row)
+				if len(p.Metrics) > 0 {
+					ui.Row(c).FillWidth().Gap(8).Wrap().Children(func() {
+						for idx, m := range p.Metrics {
+							mBg, mFg := statusColors(t, m.Status)
+							ui.Column(c.Key(fmt.Sprintf("m-%s-%d", p.ID, idx))).
+								Grow(1).MinWidth(150).Padding(10).Radius(8).Border(1, t.Border).Background(t.Background).Gap(4).Children(func() {
+								ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+									ui.Text(c, m.Label).FontSize(10.5).Bold().TextColor(t.TextMuted).Grow(1).SingleLine()
+									if m.Unit != "" {
+										pillBadge(c, m.Unit, mBg, mFg)
+									}
+								})
+								ui.Text(c, m.Value).FontSize(18).Bold().TextColor(mFg)
+								if m.Progress > 0 {
+									pct := m.Progress
+									if pct > 100 {
+										pct = 100
+									}
+									ui.Row(c).FillWidth().Height(5).Radius(3).Background(t.Border).Clip().Children(func() {
+										ui.Row(c).Grow(float32(pct)).Basis(0).FillHeight().Radius(3).Background(mFg)
+										if rem := 100 - pct; rem > 0 {
+											ui.Row(c).Grow(float32(rem)).Basis(0).FillHeight()
+										}
+									})
+								}
+							})
+						}
+					})
+				}
+
+				// Rows (each may link to a URL, as the mydealz deals do)
+				if len(p.Rows) > 0 {
+					ui.Column(c).FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Background).Gap(6).Children(func() {
+						for idx, r := range p.Rows {
+							rCopy := r
+							rBg, rFg := statusColors(t, rCopy.Status)
+							ui.Row(c.Key(fmt.Sprintf("r-%s-%d", p.ID, idx))).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+								ui.Text(c, rCopy.Left).FontSize(11.5).TextColor(t.TextMuted).Grow(1).SingleLine()
+								if rCopy.URL != "" {
+									ui.Link(c.Key(fmt.Sprintf("rl-%s-%d", p.ID, idx)), rCopy.Right, rCopy.URL).FontSize(11.5) // opens the URL itself
+								} else {
+									ui.Text(c, rCopy.Right).FontSize(11.5).Bold().SingleLine()
+								}
+								if rCopy.Badge != "" {
+									pillBadge(c, rCopy.Badge, rBg, rFg)
+								}
 							})
 						}
 					})
 				}
 			})
-		}
-
-		// Rows (each may link to a URL, as the mydealz deals do)
-		if len(p.Rows) > 0 {
-			ui.Column(c).FillWidth().Padding(8, 10).Radius(8).Border(1, t.Border).Background(t.Background).Gap(6).Children(func() {
-				for idx, r := range p.Rows {
-					rCopy := r
-					rBg, rFg := statusColors(t, rCopy.Status)
-					ui.Row(c.Key(fmt.Sprintf("r-%s-%d", p.ID, idx))).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, rCopy.Left).FontSize(11.5).TextColor(t.TextMuted).Grow(1).SingleLine()
-						if rCopy.URL != "" {
-							ui.Link(c.Key(fmt.Sprintf("rl-%s-%d", p.ID, idx)), rCopy.Right, rCopy.URL).FontSize(11.5) // opens the URL itself
-						} else {
-							ui.Text(c, rCopy.Right).FontSize(11.5).Bold().SingleLine()
-						}
-						if rCopy.Badge != "" {
-							pillBadge(c, rCopy.Badge, rBg, rFg)
-						}
-					})
-				}
-			})
-		}
+		})
 
 		// Actions of the panel
 		if len(p.Actions) > 0 {
@@ -122,7 +135,7 @@ func (a *App) renderNativePanelPopover(c *ui.Context, p *PanelSpec, _ *panelRunt
 	})
 }
 
-// runPanelAction runs an action button's command (with the vault's variables) and opens its URL.
+// runPanelAction runs an action button's command (with a timeout and error feedback) and opens its URL.
 func (a *App) runPanelAction(p *PanelSpec, act PanelAction) {
 	if act.Command != "" && a.isHeld(p) {
 		a.toast(fmt.Sprintf(T("„%s“ wartet auf deine Freigabe im Hauptfenster"), p.Title))
@@ -130,11 +143,26 @@ func (a *App) runPanelAction(p *PanelSpec, act PanelAction) {
 	}
 	if act.Command != "" {
 		logf("panel", "%s: action %q", p.ID, act.Label)
-		cmd := exec.Command(scriptShell(), "-c", act.Command)
-		cmd.Env = append(cmd.Environ(), panelEnv(a.Vault, a.Jira)...)
-		if cmd.Start() == nil {
-			go func() { _ = cmd.Wait() }() // reap the process (no zombies)
-		}
+		env := panelEnv(a.Vault, a.Jira)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, scriptShell(), "-c", act.Command)
+			cmd.Env = append(cmd.Environ(), env...)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				detail := maskSecrets(firstLines(strings.TrimSpace(string(out)), 1, 140))
+				if ctx.Err() == context.DeadlineExceeded {
+					detail = fmt.Sprintf(T("nach %d s abgebrochen"), int(actionTimeout.Seconds()))
+				} else if detail == "" {
+					detail = err.Error()
+				}
+				logf("panel", "%s: action %q failed: %v (%s)", p.ID, act.Label, err, detail)
+				a.updateUI(func() {
+					a.toast(fmt.Sprintf(T("Aktion „%s“ fehlgeschlagen: %s"), act.Label, detail))
+				})
+			}
+		}()
 	}
 	if act.URL != "" {
 		_ = mygo.Shell.OpenExternal(act.URL)

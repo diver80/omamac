@@ -296,11 +296,17 @@ func (a *App) announceExternal(p *PanelSpec, msg string) {
 	go func() { _ = n.Show() }()
 }
 
-const reviewNotificationPrefix = "omamac-review-"
+const (
+	reviewNotificationPrefix      = "omamac-review-"
+	panelStatusNotificationPrefix = "omamac-status-"
+)
 
-// onNotificationClick opens the main window at the panel a review notification is about.
+// onNotificationClick opens the main window at the panel a notification is about.
 func (a *App) onNotificationClick(id string) {
 	panelID, ok := strings.CutPrefix(id, reviewNotificationPrefix)
+	if !ok {
+		panelID, ok = strings.CutPrefix(id, panelStatusNotificationPrefix)
+	}
 	if !ok {
 		return
 	}

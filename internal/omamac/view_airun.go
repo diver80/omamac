@@ -32,6 +32,7 @@ type aiRun struct {
 	steps    []aiStep
 	output   strings.Builder
 	errText  string
+	quotaErr bool
 	canceled bool
 	done     bool
 	result   *aiRunResult
@@ -88,12 +89,12 @@ func summarizePanel(p *PanelSpec, checkErr error) aiResultPanel {
 }
 
 type aiRunView struct {
-	title, output, errText string
-	steps                  []aiStep
-	elapsed                time.Duration
-	done, canceled         bool
-	result                 *aiRunResult
-	agent                  *agentInfo
+	title, output, errText   string
+	steps                    []aiStep
+	elapsed                  time.Duration
+	done, canceled, quotaErr bool
+	result                   *aiRunResult
+	agent                    *agentInfo
 }
 
 func (r *aiRun) snapshot() aiRunView {
@@ -106,7 +107,7 @@ func (r *aiRun) snapshot() aiRunView {
 	return aiRunView{
 		title: r.title, output: r.output.String(), errText: r.errText,
 		steps: append([]aiStep(nil), r.steps...), elapsed: end.Sub(r.started),
-		done: r.done, canceled: r.canceled, result: r.result, agent: r.agent,
+		done: r.done, canceled: r.canceled, quotaErr: r.quotaErr, result: r.result, agent: r.agent,
 	}
 }
 
@@ -221,6 +222,7 @@ func (r *aiRun) finish(err error) {
 		if r.canceled {
 			r.errText = T("Abgebrochen.")
 		} else {
+			r.quotaErr = IsQuotaError(err)
 			r.errText = errText(err)
 		}
 	}
@@ -287,8 +289,21 @@ func (a *App) renderAIRunDialog(c *ui.Context) {
 						a.renderAIRunSteps(c, v)
 					}
 					if v.errText != "" {
-						ui.Row(c).FillWidth().Padding(10, 12).Radius(8).Background(t.Danger.Alpha(0.10)).Children(func() {
+						ui.Column(c).FillWidth().Padding(10, 12).Radius(8).Background(t.Danger.Alpha(0.10)).Gap(8).Children(func() {
 							ui.Text(c, v.errText).FontSize(12).TextColor(t.Danger).FillWidth().Selectable()
+							if v.quotaErr {
+								ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+									if CanFallbackToClaudeCLI(a.Config) && a.lastAIRetry != nil {
+										if ui.PrimaryButton(c.Key("ai-retry-claude"), T("Mit Claude CLI wiederholen & als Standard setzen")).Clicked() {
+											a.switchToClaudeCLIAndRetry()
+										}
+									}
+									if ui.Button(c.Key("ai-open-settings"), T("KI-Einstellungen öffnen")).Clicked() {
+										a.showAIRun = false
+										a.setTab(TabSettings)
+									}
+								})
+							}
 						})
 					}
 					if v.result != nil {

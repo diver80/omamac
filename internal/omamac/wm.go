@@ -72,42 +72,65 @@ end tell`, x, y, w, h)
 	return exec.Command("osascript", "-e", script).Start()
 }
 
-// DiscoverMacApps scans /Applications and /System/Applications/Utilities for quick-launching from the Wal-Panel.
+// DiscoverMacApps scans /Applications, ~/Applications, /System/Applications, Utilities, and Finder for quick-launching from the Wal-Panel.
 func DiscoverMacApps() []QuickCommand {
+	home, _ := os.UserHomeDir()
 	dirs := []string{
 		"/Applications",
+		filepath.Join(home, "Applications"),
 		"/System/Applications",
 		"/System/Applications/Utilities",
 	}
+	return discoverMacAppsFrom(dirs, "/System/Library/CoreServices/Finder.app")
+}
+
+func discoverMacAppsFrom(dirs []string, extraApps ...string) []QuickCommand {
 	seen := make(map[string]bool)
 	var apps []QuickCommand
 
+	addApp := func(fullPath string) {
+		name := filepath.Base(fullPath)
+		if !strings.HasSuffix(name, ".app") {
+			return
+		}
+		appName := strings.TrimSuffix(name, ".app")
+		if seen[appName] {
+			return
+		}
+		seen[appName] = true
+		p := fullPath
+		apps = append(apps, QuickCommand{
+			ID:       "app-" + Slugify(appName),
+			Title:    appName,
+			Subtitle: p,
+			Category: "App",
+			Icon:     "🚀",
+			Run: func() error {
+				return exec.Command("open", "-a", p).Start()
+			},
+		})
+	}
+
 	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
 		entries, err := os.ReadDir(d)
 		if err != nil {
 			continue
 		}
 		for _, e := range entries {
-			name := e.Name()
-			if !strings.HasSuffix(name, ".app") {
-				continue
+			if strings.HasSuffix(e.Name(), ".app") {
+				addApp(filepath.Join(d, e.Name()))
 			}
-			appName := strings.TrimSuffix(name, ".app")
-			if seen[appName] {
-				continue
-			}
-			seen[appName] = true
-			fullPath := filepath.Join(d, name)
-			apps = append(apps, QuickCommand{
-				ID:       "app-" + Slugify(appName),
-				Title:    appName,
-				Subtitle: fullPath,
-				Category: "App",
-				Icon:     "🚀",
-				Run: func() error {
-					return exec.Command("open", "-a", fullPath).Start()
-				},
-			})
+		}
+	}
+	for _, p := range extraApps {
+		if p == "" {
+			continue
+		}
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			addApp(p)
 		}
 	}
 

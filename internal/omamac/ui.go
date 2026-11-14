@@ -71,11 +71,24 @@ type App struct {
 
 	activeTab StudioTab
 
-	panels   []*PanelSpec
-	runtimes map[string]*panelRuntime
-	apps     []QuickCommand
+	panels       []*PanelSpec
+	runtimes     map[string]*panelRuntime
+	appsMu       sync.RWMutex
+	apps         []QuickCommand
+	appsLoadedAt time.Time
 
 	// AI create (prompt 1) & refine (prompt 2) state
+	panelFilter       string // filter query in the Panels tab
+	detailPreviewMode int    // 0 = HTML (WebView), 1 = Data (native)
+	previewWeb        *dashWeb
+	previewWebID      string
+
+	editCmdID      string // panel in the "Befehl & Intervall" dialog
+	showEditCmd    bool
+	editCmdText    string
+	editCmdRefresh string
+	editCmdNotify  bool
+
 	showCreate      bool // the "Neues Panel" dialog
 	createPlaceIdx  int  // 0 = menu bar, 1 = menu bar + desktop widget
 	showCreateMore  bool // the dialog's further options
@@ -145,6 +158,7 @@ type App struct {
 	thumbs       map[string]ui.ImageSource
 
 	aiRun         *aiRun // the current or last AI run, shown in the "KI arbeitet" dialog
+	lastAIRetry   func() // retries the last failed create/refine after switching provider
 	showAIRun     bool
 	aiRunSeen     int  // output length the dialog last scrolled to
 	aiRunShowRaw  bool // the raw answer below the result is unfolded
@@ -216,7 +230,6 @@ func newApp(configPath string, cli bool) (*App, error) {
 		activeTab:     TabDashboard,
 		panels:        panels,
 		runtimes:      make(map[string]*panelRuntime),
-		apps:          DiscoverMacApps(),
 		showHelpModal: !cfg.OnboardingDismissed, // the short guide opens once, on the first start
 	}
 	if !cli {
@@ -380,6 +393,7 @@ func (a *App) StartDesktopServices(studioWin *mygo.Window) {
 		})
 	}()
 	a.syncLauncherBar()
+	a.refreshMacAppsAsync()
 	logf("app", "OmaMac %s started, %d panels", versionLabel(), len(a.panels))
 
 	// 2. Register global hotkey (e.g. Alt+Space)
@@ -446,8 +460,35 @@ func (a *App) ToggleWalPanel() {
 	a.showLauncher(nil)
 }
 
+// refreshMacAppsAsync scans installed macOS apps without blocking startup or UI frames.
+func (a *App) refreshMacAppsAsync() {
+	go func() {
+		apps := DiscoverMacApps()
+		a.appsMu.Lock()
+		a.apps = apps
+		a.appsLoadedAt = time.Now()
+		a.appsMu.Unlock()
+		if a.walWin != nil && !a.walWin.IsDestroyed() {
+			a.walWin.Invalidate()
+		}
+	}()
+}
+
+// macApps returns a snapshot of the discovered apps safely.
+func (a *App) macApps() []QuickCommand {
+	a.appsMu.RLock()
+	defer a.appsMu.RUnlock()
+	return a.apps
+}
+
 // showLauncher opens the launcher empty: centered, or with its top-left corner at at.
 func (a *App) showLauncher(at *mygo.Point) {
+	a.appsMu.RLock()
+	stale := a.appsLoadedAt.IsZero() || time.Since(a.appsLoadedAt) > 5*time.Minute
+	a.appsMu.RUnlock()
+	if stale {
+		a.refreshMacAppsAsync()
+	}
 	a.launcherQuery = ""
 	a.launchSel = 0
 	a.launchList.ScrollTo(0, ui.Start)
@@ -721,6 +762,9 @@ func (a *App) pushHTMLPanelUpdate(rt *panelRuntime) {
 	if w, ok := a.dashWebs[rt.spec.ID]; ok && w.view.Page() != nil {
 		_, _ = w.view.Page().Eval(js)
 	}
+	if a.previewWeb != nil && a.previewWebID == rt.spec.ID && a.previewWeb.view != nil && a.previewWeb.view.Page() != nil {
+		_, _ = a.previewWeb.view.Page().Eval(js)
+	}
 	if rt.flyout != nil && !rt.flyout.IsDestroyed() && rt.flyout.Page() != nil {
 		_, _ = rt.flyout.Page().Eval(js)
 	}
@@ -738,12 +782,42 @@ func (a *App) backgroundRefreshLoop() {
 	}
 }
 
+func clonePanelForRefresh(p *PanelSpec) *PanelSpec {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	cp.Metrics = append([]PanelMetric(nil), p.Metrics...)
+	cp.Rows = append([]PanelRow(nil), p.Rows...)
+	cp.Actions = append([]PanelAction(nil), p.Actions...)
+	cp.PromptHistory = append([]PromptStep(nil), p.PromptHistory...)
+	return &cp
+}
+
+func applyRefreshedPanel(dst, src *PanelSpec) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.BadgeText = src.BadgeText
+	dst.Status = src.Status
+	dst.Subtitle = src.Subtitle
+	dst.Metrics = src.Metrics
+	dst.Rows = src.Rows
+	dst.Actions = src.Actions
+	dst.Height = src.Height
+	dst.LastUpdated = src.LastUpdated
+	dst.LastCommandOut = src.LastCommandOut
+	dst.LastRunError = src.LastRunError
+}
+
 // refreshDuePanels refreshes every active panel whose RefreshSeconds interval has elapsed
 // (or all active ones when force is true). Runs off the UI thread.
 func (a *App) refreshDuePanels(force bool) {
 	type job struct {
-		p  *PanelSpec
-		rt *panelRuntime
+		p          *PanelSpec
+		work       *PanelSpec
+		rt         *panelRuntime
+		prevStatus string
 	}
 	var jobs []job
 	a.updateUISync(func() {
@@ -765,7 +839,7 @@ func (a *App) refreshDuePanels(force bool) {
 				continue
 			}
 			rt.refreshing = true
-			jobs = append(jobs, job{p, rt})
+			jobs = append(jobs, job{p, clonePanelForRefresh(p), rt, p.Status})
 		}
 	})
 	if len(jobs) == 0 {
@@ -778,15 +852,17 @@ func (a *App) refreshDuePanels(force bool) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
-			a.refreshPanelData(ctx, jb.p)
+			a.refreshPanelData(ctx, jb.work)
 		}(jb)
 	}
 	wg.Wait()
 	a.updateUI(func() {
 		now := time.Now()
 		for _, jb := range jobs {
+			applyRefreshedPanel(jb.p, jb.work)
 			jb.rt.refreshing = false
 			jb.rt.lastRefresh = now
+			a.maybeNotifyStatusChange(jb.p, jb.prevStatus)
 		}
 		a.syncAllPanelRuntimes()
 	})
@@ -825,6 +901,17 @@ func (a *App) refreshPanelData(ctx context.Context, p *PanelSpec) {
 
 // refreshPanelAsync refreshes one panel in the background and re-renders all trays/popovers afterwards.
 func (a *App) refreshPanelAsync(p *PanelSpec, doneMsg string) {
+	if p == nil {
+		return
+	}
+	if !a.desktop {
+		a.syncAllPanelRuntimes()
+		if doneMsg != "" {
+			a.toast(doneMsg)
+		}
+		return
+	}
+	prevStatus := p.Status
 	rt := a.runtimes[p.ID]
 	if rt != nil {
 		if rt.refreshing {
@@ -832,21 +919,53 @@ func (a *App) refreshPanelAsync(p *PanelSpec, doneMsg string) {
 		}
 		rt.refreshing = true
 	}
+	work := clonePanelForRefresh(p)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		a.refreshPanelData(ctx, p)
+		a.refreshPanelData(ctx, work)
 		a.updateUI(func() {
+			applyRefreshedPanel(p, work)
 			if rt != nil {
 				rt.refreshing = false
 				rt.lastRefresh = time.Now()
 			}
+			a.maybeNotifyStatusChange(p, prevStatus)
 			a.syncAllPanelRuntimes()
 			if doneMsg != "" {
 				a.toast(doneMsg)
 			}
 		})
 	}()
+}
+
+// maybeNotifyStatusChange sends a macOS notification when enabled on p and its status changed.
+func (a *App) maybeNotifyStatusChange(p *PanelSpec, prevStatus string) {
+	if p == nil || !p.NotifyOnStatusChange || prevStatus == "" || prevStatus == p.Status {
+		return
+	}
+	statusWord := map[string]string{
+		"ok":   "OK",
+		"warn": T("Warnung"),
+		"crit": T("Kritisch"),
+		"info": "Info",
+	}
+	to := statusWord[strings.ToLower(p.Status)]
+	if to == "" {
+		to = strings.ToUpper(p.Status)
+	}
+	body := fmt.Sprintf(T("Status gewechselt: %s (%s)"), to, panelStatusText(p))
+	logf("panel", "%s: status %s -> %s (%s)", p.ID, prevStatus, p.Status, panelStatusText(p))
+	if !a.desktop {
+		return
+	}
+	n := mygo.NewNotification(mygo.NotificationOptions{
+		ID:    panelStatusNotificationPrefix + p.ID,
+		Title: p.Icon + " " + T(p.Title),
+		Body:  body,
+		Group: "omamac-status",
+	})
+	go func() { _ = n.Show() }()
 }
 
 func (a *App) updateUI(fn func()) {
@@ -868,7 +987,7 @@ func errText(err error) string {
 	if err == nil {
 		return T("die KI hat kein Ergebnis geliefert.")
 	}
-	return err.Error()
+	return friendlyAIError(err)
 }
 
 // updateUISync runs fn on the main thread and waits for it (used to snapshot UI state from goroutines).
@@ -905,6 +1024,11 @@ func (a *App) triggerPrompt1Create() {
 	vaultEnv := panelEnv(a.Vault, a.Jira)
 
 	imagePaths := append([]string(nil), a.createImages...)
+	a.lastAIRetry = func() {
+		a.prompt1Text = prompt
+		a.createImages = append([]string(nil), imagePaths...)
+		a.triggerPrompt1Create()
+	}
 	a.busy = true
 	a.busyLabel = T("KI erstellt das Panel …")
 	ctx, run := a.startAIRun(T("Neues Panel: ") + truncateStr(prompt, 60))
@@ -973,6 +1097,11 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 	vaultEnv := panelEnv(a.Vault, a.Jira)
 
 	imagePaths := append([]string(nil), a.refineImages...)
+	a.lastAIRetry = func() {
+		a.prompt2Text = refinePrompt
+		a.refineImages = append([]string(nil), imagePaths...)
+		a.triggerPrompt2Refine(panelID, refinePrompt)
+	}
 	a.busy = true
 	a.busyLabel = fmt.Sprintf(T("KI passt „%s“ an …"), target.Title)
 	ctx, run := a.startAIRun(fmt.Sprintf(T("„%s“ anpassen"), target.Title))
@@ -1031,4 +1160,29 @@ func (a *App) triggerPrompt2Refine(panelID, refinePrompt string) {
 			}
 		})
 	}()
+}
+
+// switchToClaudeCLIAndRetry switches the active AI provider to Claude CLI, persists settings,
+// and retries the failed create/refine run.
+func (a *App) switchToClaudeCLIAndRetry() {
+	if !CanFallbackToClaudeCLI(a.Config) {
+		a.showAIRun = false
+		a.setTab(TabSettings)
+		return
+	}
+	a.Config.ActiveProvider = ProviderClaude
+	a.Config.ClaudeAuthMode = ClaudeAuthCLI
+	if executableFile(a.Config.ClaudeCLIPath) == "" {
+		a.Config.ClaudeCLIPath = claudeCLIBin(a.Config)
+	}
+	a.Config.Normalize()
+	_ = SaveConfig(a.ConfigPath, a.Config)
+	a.loadSettingsDraft()
+	a.clearStatus()
+	a.toast(T("Auf Claude CLI umgestellt"))
+	retry := a.lastAIRetry
+	a.showAIRun = false
+	if retry != nil && !a.busy {
+		retry()
+	}
 }
